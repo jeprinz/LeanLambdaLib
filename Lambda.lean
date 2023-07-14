@@ -428,10 +428,88 @@ inductive Par : ∀{Γ}, Term Γ → Term Γ → Type
   Par M M'
   → Par (lam (app (rename Var.succ M) (var Var.zero))) M'
 
+def ParSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
+  {x : Var Γ} →Par (sub1 x) (sub2 x)
+
+theorem parRename {Γ} {M M' : Term Γ}
+  (p : Par M M') 
+  : ∀{Δ}, {ren : Ren Γ Δ} → Par (rename ren M) (rename ren M') := by
+  induction p with
+  | pvar => intros; simp [rename]; apply Par.pvar
+  | plam _p ih => intros; simp [rename]; apply Par.plam; apply ih
+  | papp _p1 _p2 ih1 ih2 => intros; simp [rename]; apply Par.papp; apply ih1; apply ih2
+  | pbeta _p1 _p2 ih1 ih2 =>
+    intros
+    simp [rename]
+    rw [<- renameSubstCommute]
+    apply Par.pbeta
+    apply ih1
+    apply ih2
+  | peta _p ih =>
+    intros
+    simp [rename]
+    rw [composeRename]
+    have lemma {n1 n2} {ren : Ren n1 n2}: ext ren ∘ Var.succ = Var.succ ∘ ren := by
+      apply funext
+      intro x
+      rfl
+    rw [lemma]
+    rw [<- composeRename]
+    simp [ext]
+    apply Par.peta
+    apply ih
+
+theorem parSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
+  (ps : ParSubst sub1 sub2)
+  : ParSubst (exts sub1) (exts sub2) := by
+  intro x
+  cases x
+  . apply Par.pvar
+  . apply parRename; apply ps
+
+theorem substPar {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ}
+  (ps : ParSubst sub1 sub2) (p : Par M M')
+  : Par (subst sub1 M) (subst sub2 M') :=
+  match p with
+  | Par.pvar => ps
+  | Par.papp p1 p2 => Par.papp (substPar ps p1) (substPar ps p2)
+  | Par.pbeta p1 p2 => by
+    rw [<- substCommute]
+    apply Par.pbeta
+    apply substPar
+    apply parSubstExts
+    apply ps
+    apply p1
+    apply substPar
+    apply ps
+    apply p2
+  | Par.plam p => by
+    apply Par.plam
+    apply substPar
+    apply parSubstExts
+    apply ps
+    apply p
+  | Par.peta p => by
+    simp [subst]
+    rw [commuteSubstRename]
+    apply Par.peta
+    apply substPar
+    apply ps
+    apply p
+    intro x
+    rfl
+
+def parSubstZero {Γ} {M M' : Term Γ}
+  (p : Par M M') : ParSubst (substZero M) (substZero M')
+  := fun {x} =>
+    match x with
+    | Var.zero => p
+    | Var.succ _x' => Par.pvar
+
 theorem subPar {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
   (p1 : Par N N') (p2 : Par M M')
-  : Par (subLast N M) (subLast N' M') := by
-  sorry
+  : Par (subLast N M) (subLast N' M') :=
+  substPar (parSubstZero p2) p1
 
 theorem parRefl {Γ} {M : Term Γ} : Par M M := by
   induction M with
@@ -439,48 +517,33 @@ theorem parRefl {Γ} {M : Term Γ} : Par M M := by
   | app t1 t2 ih1 ih2 => apply Par.papp; apply ih1; apply ih2
   | lam t ih => apply Par.plam; apply ih
 
-inductive MultiPar {Γ} : Term Γ → Term Γ → Type  
+inductive MultiPar : ∀{Γ}, Term Γ → Term Γ → Type
 | halt : {M : Term Γ} → MultiPar M M 
 | step : {L M N : Term Γ}
-  → Par L M → MultiPar M N → MultiPar L N   
+  → Par L M → MultiPar M N → MultiPar L N
 
 -- Σ' is called "psigma"
 -- would need to generalize so that induction works in lambda case
-def unweaken {Γ} (t : Term (succ Γ))
-  : Option (Σ' t', rename Var.succ t' = t) :=
-  -- should actually be (does not exists t' such that ...) ⊕ (Σ' t', rename Var.succ t' = t)
-  match t with
-  | var i => match i with
-    | Var.zero => none
-    | Var.succ i' => some ⟨var i', rfl⟩
-  | app t1 t2 => do
-    let ⟨t1', p1⟩ <- unweaken t1
-    let ⟨t2', p2⟩  <- unweaken t2
-    some ⟨app t1' t2', by simp [rename]; apply And.intro; apply p1; apply p2⟩ 
-  | lam t => do
-    let ⟨t', p⟩ <- unweaken t
-    some ⟨lam t', by simp [rename]; apply p⟩ 
+-- def unweaken {Γ} (t : Term (succ Γ))
+--   : Option (Σ' t', rename Var.succ t' = t) :=
+--   -- should actually be (does not exists t' such that ...) ⊕ (Σ' t', rename Var.succ t' = t)
+--   match t with
+--   | var i => match i with
+--     | Var.zero => none
+--     | Var.succ i' => some ⟨var i', rfl⟩
+--   | app t1 t2 => do
+--     let ⟨t1', p1⟩ <- unweaken t1
+--     let ⟨t2', p2⟩  <- unweaken t2
+--     some ⟨app t1' t2', by simp [rename]; apply And.intro; apply p1; apply p2⟩ 
+--   | lam t => do
+--     let ⟨t', p⟩ <- unweaken t
+    -- some ⟨lam t', by simp [rename]; apply p⟩ 
 
 inductive PropToType (P : Prop) : Type
 | propToType : P → PropToType P
 
--- see also: https://www.cs.vu.nl/~jbe248/lv2017/12x4.pdf
--- see https://doi.org/10.1006/inco.1995.1057
--- universal common reduct
--- def ucr {Γ} (t : Term Γ) : Term Γ :=
---   match t with
---   | var x => var x
---   | app (lam t1) t2 => subLast (ucr t1) (ucr t2)
---   | lam term@(app t (var Var.zero)) =>
---     match unrename Var.succ t with
---     | Sum.inl _ => lam (ucr term)
---     | Sum.inr ⟨t', _p⟩ => t'
---   | lam (var i) => lam (ucr (var i))
---   -- | lam (lam t) => lam (ucr (lam t))
---   | lam t => lam (ucr t)
---   | app t1 t2 => app (ucr t1) (ucr t2)
 
-inductive Decided (P : Prop) : Type
+inductive Decided (P : Prop) : Prop
 | yes : P → Decided P 
 | no : Not P → Decided P 
 
@@ -495,7 +558,7 @@ inductive BetaRedux {Γ} : Term Γ → Prop
 inductive EtaRedux : ∀{Γ}, Term Γ → Prop
 | redux : ∀ {t}, EtaRedux (lam (app (rename Var.succ t) (var Var.zero)))
 
-inductive TermKind : ∀{Γ}, Term Γ → Type
+inductive TermKind : ∀{Γ}, Term Γ → Prop
 | betaRedux : ∀{Γ}, (t1 : Term (succ Γ)) → (t2 : Term Γ)
   →  TermKind (app (lam t1) t2)
 | app : ∀{Γ}, (t1 t2 : Term Γ) → Not (BetaRedux (app t1 t2)) 
@@ -506,15 +569,12 @@ inductive TermKind : ∀{Γ}, Term Γ → Type
   → TermKind (lam t)
 | var : ∀{Γ}, (i : Var Γ) → TermKind (var i)
 
-def test {n} (t : Term (succ n)) : Term (succ n) :=
-  match t with
-  | var _ => _
-  | lam _ => _
-  | app _ _ => _
-
+-- Note: this can be proven constructively, but for now I just have used LEM
 def unrename {n1 n2} (ren : Ren n1 n2) (t : Term n2)
-  : DecidedT (Σ' t', rename ren t' = t) :=
-  by sorry
+  : Decided (∃ t', rename ren t' = t) :=
+    match (Classical.em (∃ t', rename ren t' = t)) with
+    | Or.inl yes => Decided.yes yes
+    | Or.inr no => Decided.no no
 
 theorem findTermKind {Γ : Context} (t : Term Γ) : TermKind t :=
   match t with
@@ -530,10 +590,10 @@ theorem findTermKind {Γ : Context} (t : Term Γ) : TermKind t :=
       | app t1 (app _ _) => TermKind.lam _ (by intro r; cases r)
       | app t1 (lam _) => TermKind.lam _ (by intro r; cases r)
       | app t1 (var Var.zero) => match unrename Var.succ t1 with
-        | DecidedT.yes ⟨t', p⟩ => by
+        | Decided.yes ⟨t', p⟩ => by
           rw [<- p]
           exact TermKind.etaRedux _
-        | DecidedT.no p => TermKind.lam _ (by
+        | Decided.no p => TermKind.lam _ (by
           intro x
           cases x with
           | @redux t =>
@@ -551,26 +611,115 @@ theorem decideBetaRedux {Γ} (t : Term Γ) : Decided (BetaRedux t) :=
   | (lam _) => Decided.no (by intro r; cases r)
   | (var _) => Decided.no (by intro r; cases r)
 
-inductive Ucr : ∀{Γ}, Term Γ → Term Γ → Type
+def unrename2 {n1 n2} (ren : Ren n1 n2) (t : Term n2)
+  : DecidedT (Σ' t', rename ren t' = t) := by sorry
+
+-- see also: https://www.cs.vu.nl/~jbe248/lv2017/12x4.pdf
+-- see https://doi.org/10.1006/inco.1995.1057
+-- universal common reduct
+def ucr {Γ} (t : Term Γ) : Term Γ :=
+  match t with
+  | var x => var x
+  | app (lam t1) t2 => subLast (ucr t1) (ucr t2)
+  | lam term@(app t (var Var.zero)) =>
+    match unrename2 Var.succ t with
+    | DecidedT.no _ => lam (ucr term)
+    | DecidedT.yes ⟨t', _p⟩ => ucr t'
+  | lam (var i) => lam (ucr (var i))
+  -- | lam (lam t) => lam (ucr (lam t))
+  | lam t => lam (ucr t)
+  | app t1 t2 => app (ucr t1) (ucr t2)
+
+inductive Ucr : ∀{Γ}, Term Γ → Term Γ → Prop
 | var : ∀{i}, Ucr (var i) (var i)
 | beta : ∀{Γ}, {M M': Term (succ Γ)} → {N N' : Term Γ}  → Ucr M M' → Ucr N N' 
   → Ucr (app (lam M) N) (subLast M' N') 
-| eta : ∀{Γ}, {M : Term Γ}
-  → Ucr (lam (app (rename Var.succ M) (var Var.zero))) M 
+| eta : ∀{Γ}, {M M' : Term Γ}
+  → Ucr M M'
+  → Ucr (lam (app (rename Var.succ M) (var Var.zero))) M'
 | app : ∀{Γ}, {M N M' N' : Term Γ} → Not (BetaRedux (app M N)) 
   → Ucr M M' → Ucr N N' → Ucr (app M N) (app M' N')  
 | lam : ∀{Γ}, {M M' : Term (succ Γ)} → Not (EtaRedux (lam M)) 
   → Ucr M M' → Ucr (lam M) (lam M')
 
-theorem ucrExists {Γ} (t : Term Γ) : Σ' t', Ucr t t' :=
-  match findTermKind t with
-  | TermKind.betaRedux t1 t2 => _
-  | TermKind.app t1 t2 p =>
-    match ucrExists t1, ucrExists t2 with
+def size {Γ} (t : Term Γ) : Nat :=
+  match t with
+  | var _ => 0
+  | app t1 t2 => (size t1) + (size t2)
+  | lam t => 1 + (size t)
+
+inductive Structure : Type :=
+| var : Structure
+| app : Structure → Structure → Structure  
+| lam : Structure → Structure 
+
+def forget {Γ} (t : Term Γ) : Structure :=
+  match t with
+  | var _ => Structure.var
+  | app t1 t2 => Structure.app (forget t1) (forget t2)
+  | lam t => Structure.lam (forget t)
+
+theorem forgetRename {n1 n2} {ren : Ren n1 n2} {t : Term n1}
+  : forget t = forget (rename ren t) :=
+  match t with
+  | var _ => rfl
+  | app t1 t2 => by
+    simp [rename]
+    simp [forget]
+    apply And.intro
+    apply forgetRename
+    apply forgetRename
+  | lam t => by
+    simp [rename]
+    simp [forget]
+    apply forgetRename
+
+-- theorem ucrExists {Γ} (t : Term Γ) : ∃ t', Ucr t t' :=
+--   match findTermKind t with
+--   | TermKind.betaRedux t1 t2 =>
+--     match ucrExists t1, ucrExists t2 with
+--     | ⟨_, p1⟩, ⟨_, p2⟩ => ⟨_, Ucr.beta p1 p2⟩
+--   | TermKind.app t1 t2 p =>
+--     match ucrExists t1, ucrExists t2 with
+--     | ⟨t1', p1⟩, ⟨t2', p2⟩ => ⟨app t1' t2', Ucr.app p p1 p2⟩
+--   | TermKind.lam t p =>
+--     match ucrExists t with
+--     | ⟨_, ue⟩ => ⟨_, Ucr.lam p ue⟩
+--   | TermKind.etaRedux t =>
+--       match ucrExists t with
+--       | ⟨_, ue⟩ => ⟨_, Ucr.eta ue⟩
+--   | TermKind.var i => ⟨_, Ucr.var⟩
+-- -- termination_by ucrExists t => forget t
+-- termination_by ucrExists t => size t
+-- decreasing_by
+--   simp_wf
+--   simp [SizeOf.sizeOf]
+--   --
+
+theorem ucrExists2 {Γ} (t : Term Γ) (s : Structure) (pForget : s = forget t) : ∃ t', Ucr t t' :=
+  match s, findTermKind t with
+  | (Structure.app (Structure.lam s1) s2), TermKind.betaRedux t1 t2 =>
+    match ucrExists2 t1 s1 (by simp[forget] at pForget; cases pForget; assumption),
+          ucrExists2 t2 s2 (by simp[forget] at pForget; cases pForget; assumption) with
+    | ⟨_, p1⟩, ⟨_, p2⟩ => ⟨_, Ucr.beta p1 p2⟩
+  | (Structure.app s1 s2), TermKind.app t1 t2 p =>
+    match ucrExists2 t1 s1 _, ucrExists2 t2 s2 _ with
     | ⟨t1', p1⟩, ⟨t2', p2⟩ => ⟨app t1' t2', Ucr.app p p1 p2⟩
-  | TermKind.lam t p => _
-  | TermKind.etaRedux t => _
-  | TermKind.var i => _
+  | (Structure.lam s), TermKind.lam t p =>
+    match ucrExists2 t s _ with
+    | ⟨_, ue⟩ => ⟨_, Ucr.lam p ue⟩
+  | (Structure.lam (Structure.app s Structure.var)), TermKind.etaRedux t =>
+        match ucrExists2 t s (by
+            simp [forget] at pForget
+            rw [<- forgetRename] at pForget
+            apply pForget
+            )
+          with
+        | ⟨_, ue⟩ => ⟨_, Ucr.eta ue⟩
+  | Structure.var, TermKind.var i => ⟨_, Ucr.var⟩
+
+-- See this for lean's features for proving termination:
+-- https://leanprover.github.io/theorem_proving_in_lean4/induction_and_recursion.html
 
 theorem parTriangle {Γ} {M N : Term Γ} (step: Par M N) : Par N (ucr M) :=
   match M, step with

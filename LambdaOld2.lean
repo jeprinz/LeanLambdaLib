@@ -412,6 +412,132 @@ theorem renameSubstCommute {Γ Δ} {N : Term (succ Γ)} {M : Term Γ} {ren : Ren
   rw [substCommute]
 
 --------------------------------------------------------------------------------
+-- ANOTHER TRY HERE
+
+def dummy : ∀{Γ}, Term Γ := lam (var Var.zero)
+
+def renFree {Γ1 Γ2} (ren : Ren Γ1 Γ2) (t : Term Γ2) : Prop :=
+  ∃ t', rename ren t' = t 
+
+def zFree {Γ} (t : Term (succ Γ)) : Prop := renFree Var.succ t
+
+inductive Par3 : ∀{Γ}, Term Γ → Term Γ → Bool → Type   
+| pvar : ∀{Γ} {x : Var Γ}, Par3 (var x) (var x) false
+| plam : ∀{Γ} {N N' : Term (succ Γ)},
+  Par3 N N' b → Par3 (lam N) (lam N') false
+| papp : ∀{Γ b1 b2}{L L' M M' : Term Γ},
+  Par3 L L' b1 → Par3 M M' b2 → Par3 (app L M) (app L' M') false
+| pbeta : ∀{Γ b1 b2}{N N' : Term (succ Γ)} {M M' : Term Γ},
+  Par3 N N' b1 → Par3 M M' b2 → Par3 (app (lam N) M) (subLast N' M') false
+| peta : ∀{Γ} {M M' : Term (succ Γ)},
+  (p : Par3 M M' false)
+  → zFree M
+  → Par3 (lam (app M (var Var.zero))) (subLast M' dummy) true -- The idea to use subsitution here is from Nipkow 2001
+
+def Par3' {Γ} (t1 t2 : Term Γ) : Type := Σ b, Par3 t1 t2 b
+
+theorem parRefl3 {Γ} {M : Term Γ} : Σ b, Par3 M M b := by sorry
+
+theorem subPar3 {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
+  (p1 : Par3' N N') (p2 : Par3' M M')
+  : Par3' (subLast N M) (subLast N' M') := by sorry
+
+-- I don't think the proof would work out anyway- how do we know that the things in etas in the outputs aren't etas anyway?
+theorem parDiamond3 {Γ b1 b2} {t t1 t2 : Term Γ}
+  (p1 : Par3 t t1 b1) (p2 : Par3 t t2 b2)
+  : Σ t', Par3' t1 t' × Par3' t2 t' :=
+  match p1, p2 with
+  | Par3.pvar, Par3.pvar => ⟨_, ⟨_, Par3.pvar⟩, ⟨_, Par3.pvar⟩⟩
+  | Par3.papp a1 b1, Par3.papp a2 b2 =>
+    let ⟨a, ⟨_, pa1⟩, ⟨_, pa2⟩⟩ := parDiamond3 a1 a2
+    let ⟨b, ⟨_, pb1⟩, ⟨_, pb2⟩⟩ := parDiamond3 b1 b2
+    ⟨app a b, ⟨_, Par3.papp pa1 pb1⟩, ⟨_, Par3.papp pa2 pb2⟩⟩ 
+  | Par3.pbeta a1 b1, Par3.pbeta a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond3 a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond3 b1 b2
+    ⟨subLast a b, subPar3 pa1 pb1, subPar3 pa2 pb2⟩
+  | Par3.papp (Par3.plam a1) b1, Par3.pbeta a2 b2 =>
+    let ⟨a, ⟨_, pa1⟩, pa2⟩ := parDiamond3 a1 a2
+    let ⟨b, ⟨_, pb1⟩, pb2⟩ := parDiamond3 b1 b2
+    ⟨subLast a b, ⟨_, Par3.pbeta pa1 pb1⟩ , subPar3 pa2 pb2⟩
+  | Par3.pbeta a1 b1, Par3.papp (Par3.plam a2) b2 => -- REPEATED CASE
+    let ⟨a, pa1, ⟨_, pa2⟩⟩ := parDiamond3 a1 a2
+    let ⟨b, pb1, ⟨_, pb2⟩⟩ := parDiamond3 b1 b2
+    ⟨subLast a b, subPar3 pa1 pb1, ⟨_, Par3.pbeta pa2 pb2⟩⟩
+  | Par3.papp (Par3.peta zf a1) b1, Par3.pbeta a2 b2 => _
+  | Par3.pbeta a1 b1, Par3.papp (Par3.peta zf a2) b2 => _ -- REPEATED CASE
+  | Par3.plam a1, Par3.plam a2 =>
+    let ⟨a, ⟨_, pa1⟩, ⟨_, pa2⟩⟩ := parDiamond3 a1 a2
+    ⟨lam a, ⟨_, Par3.plam pa1⟩, ⟨_, Par3.plam pa2⟩⟩
+  | Par3.plam (Par3.papp x y), Par3.peta zf a2 => _
+  | Par3.plam (Par3.pbeta x y), Par3.peta (Par3.plam p) zf => _
+  | Par3.peta zf t1, Par3.plam t2 => _ -- REPEATED CASE
+  | Par3.peta a1 zf1, Par3.peta a2 zf2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond3 a1 a2
+    ⟨subLast a dummy, subPar3 pa1 parRefl3, subPar3 pa2 parRefl3⟩
+
+--------------------------------------------------------------------------------
+-- ANOTHER TRY HERE
+
+inductive Par2 : ∀{Γ}, Term Γ → Term Γ → Type   
+| pvar : ∀{Γ} {x : Var Γ}, Par2 (var x) (var x)
+| plam : ∀{Γ} {N N' : Term (succ Γ)},
+  Par2 N N' → Par2 (lam N) (lam N')  
+| papp : ∀{Γ}{L L' M M' : Term Γ},
+  Par2 L L' → Par2 M M' → Par2 (app L M) (app L' M')   
+| pbeta : ∀{Γ}{N N' : Term (succ Γ)} {M M' : Term Γ},
+  Par2 N N' → Par2 M M' → Par2 (app (lam N) M) (subLast N' M')
+| peta : ∀{Γ} {M M' : Term (succ Γ)},
+  (p : Par2 M M')
+  → zFree M
+  → Par2 (lam (app M (var Var.zero))) (subLast M' dummy) -- The idea to use subsitution here is from Nipkow 2001
+
+theorem parRefl2 {Γ} {M : Term Γ} : Par2 M M := by
+  induction M with
+  | var i => apply Par2.pvar
+  | app t1 t2 ih1 ih2 => apply Par2.papp; apply ih1; apply ih2
+  | lam t ih => apply Par2.plam; apply ih
+
+theorem subPar2 {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
+  (p1 : Par2 N N') (p2 : Par2 M M')
+  : Par2 (subLast N M) (subLast N' M') := by sorry
+
+-- inductive NoRepeatedEta : ∀{Γ} {t1 t2 : Term Γ}, Par2 t1 t2 → Type
+-- | var : ∀{Γ x}, NoRepeatedEta
+
+theorem parDiamond {Γ} {t t1 t2 : Term Γ}
+  (p1 : Par2 t t1) (p2 : Par2 t t2)
+  : Σ t', Par2 t1 t' × Par2 t2 t' :=
+  match p1, p2 with
+  | Par2.pvar, Par2.pvar => ⟨_, Par2.pvar, Par2.pvar⟩
+  | Par2.papp a1 b1, Par2.papp a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨app a b, Par2.papp pa1 pb1, Par2.papp pa2 pb2⟩
+  | Par2.pbeta a1 b1, Par2.pbeta a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, subPar2 pa1 pb1, subPar2 pa2 pb2⟩
+  | Par2.papp (Par2.plam a1) b1, Par2.pbeta a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, Par2.pbeta pa1 pb1, subPar2 pa2 pb2⟩
+  | Par2.pbeta a1 b1, Par2.papp (Par2.plam a2) b2 => -- REPEATED CASE
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, subPar2 pa1 pb1, Par2.pbeta pa2 pb2⟩
+  | Par2.papp (Par2.peta zf a1) b1, Par2.pbeta a2 b2 => _
+  | Par2.pbeta a1 b1, Par2.papp (Par2.peta zf a2) b2 => _ -- REPEATED CASE
+  | Par2.plam a1, Par2.plam a2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    ⟨lam a, Par2.plam pa1, Par2.plam pa2⟩
+  | Par2.plam a1, Par2.peta zf a2 => _
+  | Par2.peta zf t1, Par2.plam t2 => _ -- REPEATED CASE
+  | Par2.peta a1 zf1, Par2.peta a2 zf2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    ⟨subLast a dummy, subPar2 pa1 parRefl2, subPar2 pa2 parRefl2⟩
+
+--------------------------------------------------------------------------------
 ---------- This section came from Confluence.agda in plfa ----------------------
 --------------------------------------------------------------------------------
 -- I have modified this section from PLFA to handle eta
@@ -424,6 +550,13 @@ inductive Par : ∀{Γ}, Term Γ → Term Γ → Type
   Par L L' → Par M M' → Par (app L M) (app L' M')   
 | pbeta : ∀{Γ}{N N' : Term (succ Γ)} {M M' : Term Γ},
   Par N N' → Par M M' → Par (app (lam N) M) (subLast N' M')  
+| peta : ∀{Γ} {M M' : Term Γ},
+  Par M M'
+  → Par (lam (app (rename Var.succ M) (var Var.zero))) M'
+-- | peta : ∀{Γ} {M M' : Term (succ Γ)},
+--   Par M M'
+-- → zFree M
+--   → Par (lam (app M (var Var.zero))) (subLast M' dummy)
 
 def ParSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
   {x : Var Γ} →Par (sub1 x) (sub2 x)

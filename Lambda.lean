@@ -412,6 +412,71 @@ theorem renameSubstCommute {Γ Δ} {N : Term (succ Γ)} {M : Term Γ} {ren : Ren
   rw [substCommute]
 
 --------------------------------------------------------------------------------
+-- ANOTHER TRY HERE
+
+def dummy : ∀{Γ}, Term Γ := lam (var Var.zero)
+
+def renFree {Γ1 Γ2} (ren : Ren Γ1 Γ2) (t : Term Γ2) : Prop :=
+  ∃ t', rename ren t' = t 
+
+def zFree {Γ} (t : Term (succ Γ)) : Prop := renFree Var.succ t
+
+inductive Par2 : ∀{Γ}, Term Γ → Term Γ → Type   
+| pvar : ∀{Γ} {x : Var Γ}, Par2 (var x) (var x)
+| plam : ∀{Γ} {N N' : Term (succ Γ)},
+  Par2 N N' → Par2 (lam N) (lam N')  
+| papp : ∀{Γ}{L L' M M' : Term Γ},
+  Par2 L L' → Par2 M M' → Par2 (app L M) (app L' M')   
+| pbeta : ∀{Γ}{N N' : Term (succ Γ)} {M M' : Term Γ},
+  Par2 N N' → Par2 M M' → Par2 (app (lam N) M) (subLast N' M')
+| peta : ∀{Γ} {M M' : Term (succ Γ)},
+  Par2 M M'
+  → zFree M -- The idea to use subsitution here is from Nipkow 2001
+  → Par2 (lam (app M (var Var.zero))) (subLast M' dummy)
+
+theorem parRefl2 {Γ} {M : Term Γ} : Par2 M M := by
+  induction M with
+  | var i => apply Par2.pvar
+  | app t1 t2 ih1 ih2 => apply Par2.papp; apply ih1; apply ih2
+  | lam t ih => apply Par2.plam; apply ih
+
+theorem subPar2 {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
+  (p1 : Par2 N N') (p2 : Par2 M M')
+  : Par2 (subLast N M) (subLast N' M') := by sorry
+
+theorem parDiamond {Γ} {t t1 t2 : Term Γ}
+  (p1 : Par2 t t1) (p2 : Par2 t t2)
+  : Σ t', Par2 t1 t' × Par2 t2 t' :=
+  match p1, p2 with
+  | Par2.pvar, Par2.pvar => ⟨_, Par2.pvar, Par2.pvar⟩
+  | Par2.papp a1 b1, Par2.papp a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨app a b, Par2.papp pa1 pb1, Par2.papp pa2 pb2⟩
+  | Par2.pbeta a1 b1, Par2.pbeta a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, subPar2 pa1 pb1, subPar2 pa2 pb2⟩
+  | Par2.papp (Par2.plam a1) b1, Par2.pbeta a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, Par2.pbeta pa1 pb1, subPar2 pa2 pb2⟩
+  | Par2.pbeta a1 b1, Par2.papp (Par2.plam a2) b2 => -- REPEATED CASE
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, subPar2 pa1 pb1, Par2.pbeta pa2 pb2⟩
+  | Par2.papp (Par2.peta zf a1) b1, Par2.pbeta a2 b2 => _
+  | Par2.pbeta a1 b1, Par2.papp (Par2.peta zf a2) b2 => _ -- REPEATED CASE
+  | Par2.plam a1, Par2.plam a2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    ⟨lam a, Par2.plam pa1, Par2.plam pa2⟩
+  | Par2.plam a1, Par2.peta zf a2 => _
+  | Par2.peta zf t1, Par2.plam t2 => _ -- REPEATED CASE
+  | Par2.peta a1 zf1, Par2.peta a2 zf2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    ⟨subLast a dummy, subPar2 pa1 parRefl2, subPar2 pa2 parRefl2⟩
+
+--------------------------------------------------------------------------------
 ---------- This section came from Confluence.agda in plfa ----------------------
 --------------------------------------------------------------------------------
 -- I have modified this section from PLFA to handle eta
@@ -427,6 +492,10 @@ inductive Par : ∀{Γ}, Term Γ → Term Γ → Type
 | peta : ∀{Γ} {M M' : Term Γ},
   Par M M'
   → Par (lam (app (rename Var.succ M) (var Var.zero))) M'
+-- | peta : ∀{Γ} {M M' : Term (succ Γ)},
+--   Par M M'
+-- → zFree M
+--   → Par (lam (app M (var Var.zero))) (subLast M' dummy)
 
 def ParSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
   {x : Var Γ} →Par (sub1 x) (sub2 x)
@@ -563,9 +632,11 @@ inductive TermKind : ∀{Γ}, Term Γ → Type
   →  TermKind (app (lam t1) t2)
 | app : ∀{Γ}, (t1 t2 : Term Γ) → Not (BetaRedex (app t1 t2)) 
   → TermKind (app t1 t2) 
-| etaRedex : ∀{Γ}, (t : Term Γ)
-  → TermKind (lam (app (rename Var.succ t) (var Var.zero))) 
-| lam : ∀{Γ}, (t : Term (succ Γ)) → Not (EtaRedex (lam t))
+| etaRedex : ∀{Γ}, (t : Term (succ Γ))
+  → zFree t 
+  → TermKind (lam (app t (var Var.zero))) 
+| lam : ∀{Γ}, (t : Term (succ Γ))
+  → Not (EtaRedex (lam t))
   → TermKind (lam t)
 | var : ∀{Γ}, (i : Var Γ) → TermKind (var i)
 
@@ -595,7 +666,7 @@ def findTermKind {Γ : Context} (t : Term Γ) : TermKind t :=
       | app t1 (var Var.zero) => match unrename2 Var.succ t1 with
         | DecidedT.yes ⟨t', p⟩ => by
           rw [<- p]
-          exact TermKind.etaRedex _
+          exact TermKind.etaRedex _ ⟨_, rfl⟩ 
         | DecidedT.no p => TermKind.lam _ (by
           intro x
           cases x with
@@ -606,57 +677,6 @@ def findTermKind {Γ : Context} (t : Term Γ) : TermKind t :=
     whatIsWrongWithLean t
   | (var _) => TermKind.var _
 
-theorem decideBetaRedex {Γ} (t : Term Γ) : Decided (BetaRedex t) :=
-  match t with
-  | (app (lam t1) t2) => Decided.yes BetaRedex.redex
-  | (app (var _) t2) => Decided.no (by intro r; cases r)
-  | (app (app _ _) t2) => Decided.no (by intro r; cases r)
-  | (lam _) => Decided.no (by intro r; cases r)
-  | (var _) => Decided.no (by intro r; cases r)
-
-inductive Ucr : ∀{Γ}, Term Γ → Term Γ → Prop
-| var : ∀{i}, Ucr (var i) (var i)
-| beta : ∀{Γ}, {M M': Term (succ Γ)} → {N N' : Term Γ}  → Ucr M M' → Ucr N N' 
-  → Ucr (app (lam M) N) (subLast M' N') 
-| eta : ∀{Γ}, {M M' : Term Γ}
-  → Ucr M M'
-  → Ucr (lam (app (rename Var.succ M) (var Var.zero))) M'
-| app : ∀{Γ}, {M N M' N' : Term Γ} → Not (BetaRedex (app M N)) 
-  → Ucr M M' → Ucr N N' → Ucr (app M N) (app M' N')  
-| lam : ∀{Γ}, {M M' : Term (succ Γ)} → Not (EtaRedex (lam M)) 
-  → Ucr M M' → Ucr (lam M) (lam M')
-
-def size {Γ} (t : Term Γ) : Nat :=
-  match t with
-  | var _ => 0
-  | app t1 t2 => (size t1) + (size t2)
-  | lam t => 1 + (size t)
-
-inductive Structure : Type :=
-| var : Structure
-| app : Structure → Structure → Structure  
-| lam : Structure → Structure 
-
-def forget {Γ} (t : Term Γ) : Structure :=
-  match t with
-  | var _ => Structure.var
-  | app t1 t2 => Structure.app (forget t1) (forget t2)
-  | lam t => Structure.lam (forget t)
-
-theorem forgetRename {n1 n2} {ren : Ren n1 n2} {t : Term n1}
-  : forget t = forget (rename ren t) :=
-  match t with
-  | var _ => rfl
-  | app t1 t2 => by
-    simp [rename]
-    simp [forget]
-    apply And.intro
-    apply forgetRename
-    apply forgetRename
-  | lam t => by
-    simp [rename]
-    simp [forget]
-    apply forgetRename
 
 -- See this for lean's features for proving termination:
 -- https://leanprover.github.io/theorem_proving_in_lean4/induction_and_recursion.html
@@ -665,32 +685,95 @@ theorem forgetRename {n1 n2} {ren : Ren n1 n2} {t : Term n1}
 -- see https://doi.org/10.1006/inco.1995.1057
 -- universal common reduct
 
-def ucr2 {Γ} (t : Term Γ) (s : Structure) (pForget : s = forget t) : Term Γ :=
-  match s, findTermKind t with
-  | (Structure.app (Structure.lam s1) s2), TermKind.betaRedex t1 t2 =>
-    let t1' := ucr2 t1 s1 (by simp[forget] at pForget; cases pForget; assumption)
-    let t2' := ucr2 t2 s2 (by simp[forget] at pForget; cases pForget; assumption)
-    subLast t1' t2'
-  | (Structure.app s1 s2), TermKind.app t1 t2 p =>
-    let t1' := ucr2 t1 s1 (by simp[forget] at pForget; cases pForget; assumption)
-    let t2' := ucr2 t2 s2 (by simp[forget] at pForget; cases pForget; assumption)
-    app t1' t2'
-  | (Structure.lam s), TermKind.lam t p =>
-    let t' := ucr2 t s (by simp[forget] at pForget; assumption)
-    lam t'
-  | (Structure.lam (Structure.app s Structure.var)), TermKind.etaRedex t =>
-    ucr2 t s (by simp[forget] at pForget; rw [<- forgetRename] at pForget; assumption)
-  | Structure.var, TermKind.var i => var i
-
+-- the Takahashi function
 def ucr {Γ} (t : Term Γ) : Term Γ :=
-  ucr2 t (forget t) rfl
+  match findTermKind t with
+  | TermKind.betaRedex t1 t2 => subLast (ucr t1) (ucr t2)
+  | TermKind.app t1 t2 _p => app (ucr t1) (ucr t2)
+  | TermKind.lam t _p => lam (ucr t)
+  | TermKind.etaRedex t _p => subLast (ucr t) dummy
+  | TermKind.var i => var i
+
+theorem ucrRenCommute {n1 n2} {ren : Ren n1 n2} {t : Term n1}
+  -- ucr (rename ren t) = rename ren (ucr t) :=
+  : rename ren (ucr t) = ucr (rename ren t) := by
+  generalize bla: (findTermKind t) = val
+  -- apply Eq.trans
+  unfold ucr
+  exact (
+    match findTermKind t with
+    | TermKind.betaRedex t1 t2 => _
+    | TermKind.app t1 t2 _p => by
+      --
+      simp
+      --
+      apply Eq.trans
+      unfold ucr
+      have please: findTermKind (app t1 t2) = val := bla
+      rw [please]
+      simp
+      --
+      simp [ucr]
+      --
+    | TermKind.lam t _p => _
+    | TermKind.etaRedex t _p => _
+    | TermKind.var i => rfl
+  )
+
+
+theorem findKindLam {Γ} {t : Term (succ Γ)} (notRedex : ¬ EtaRedex (lam t))
+  : findTermKind (lam t) = TermKind.lam t notRedex :=
+  match t, findTermKind (lam t) with
+  | .(_), TermKind.lam _ p => rfl
+  | .(_), TermKind.etaRedex _ p => by
+    apply False.elim
+    apply notRedex
+    apply Exists.elim
+    apply p
+    intro t' proof
+    rw [<- proof]
+    apply EtaRedex.redex
+
+theorem ucrLam {Γ} {t : Term (succ Γ)} (notRedex : ¬ EtaRedex (lam t))
+  : ucr (lam t) = lam (ucr t) := by
+  apply Eq.trans
+  unfold ucr
+  rw [findKindLam notRedex]
+  simp
+
+theorem ucrEtaRedex {Γ} {t : Term Γ}
+  : ucr (lam (app (rename Var.succ t) (var Var.zero))) = ucr t := by
+  have lemma : ∃ p, findTermKind (lam (app (rename Var.succ t) (var Var.zero)))
+    = TermKind.etaRedex (rename Var.succ t) p :=
+    match t, findTermKind (lam (app (rename Var.succ t) (var Var.zero))) with
+    | .(_), TermKind.lam _ p => by apply False.elim; apply p; apply EtaRedex.redex
+    | .(_), TermKind.etaRedex _ p => by exists p
+  --
+  apply Eq.trans
+  unfold ucr
+  apply Exists.elim; apply lemma; intro a proof
+  rw [proof]
+  simp
+  sorry
 
 theorem parTriangle {Γ} {M N : Term Γ} (step: Par M N) : Par N (ucr M) :=
   match findTermKind M with
   | TermKind.betaRedex t1 t2 =>
     match step with
-    | Par.pbeta p1 p2 => _
-    | Par.papp p1 p2 => _
+    | Par.pbeta p1 p2 => by
+      simp [ucr]
+      apply subPar
+      apply parTriangle; apply p1
+      apply parTriangle; apply p2
+    | Par.papp (Par.plam p1) p2 => by
+      simp [ucr]
+      apply Par.pbeta
+      apply parTriangle; apply p1
+      apply parTriangle; apply p2
+    | Par.papp (Par.peta p1) p2 => by
+      simp [ucr]
+      sorry
+      --
   | TermKind.app t1 t2 notRedex =>
     match step with
     | Par.pbeta p1 p2 => by apply False.elim; apply notRedex; apply BetaRedex.redex
@@ -698,17 +781,21 @@ theorem parTriangle {Γ} {M N : Term Γ} (step: Par M N) : Par N (ucr M) :=
   | TermKind.lam t notRedex =>
     match step with
     | Par.peta p => by apply False.elim; apply notRedex; apply EtaRedex.redex
+    | Par.plam p => by
+      simp [ucr]
+      rw [ucrLam notRedex]
+      apply Par.plam
+      apply parTriangle
+      apply p
+  | TermKind.etaRedex t p =>
+    match step with
     | Par.plam p => _
-  | TermKind.etaRedex t => _
+    | Par.peta p => by
+      rw [ucrEtaRedex]
+      apply parTriangle; apply p
   | TermKind.var i =>
     match step with
-    | Par.pvar => _
-  -- match findTermKind M, step with
-  -- | TermKind.betaRedex t1 t2, Par.pbeta p1 p2 => _
-  -- | TermKind.app t1 t2 p, Par.papp p1 p2 => _
-  -- | TermKind.lam t notRedex, Par.plam p => _
-  -- | TermKind.etaRedex t, Par.peta p => _
-  -- | TermKind.var i, Par.pvar => _
+    | Par.pvar => parRefl
 
 
 

@@ -527,10 +527,15 @@ theorem parDiamond {Γ} {t t1 t2 : Term Γ}
     ⟨lam a, Par.plam pa1, Par.plam pa2⟩
 
 -------- Relations - from Nipkow (2001)
-def Relation (A : Type) : Type := A → A → Prop  
+def Relation (A : Type) : Type := A → A → Prop
 
 def closeRef {A} (R : Relation A) : Relation A :=
-  fun x y => x = y ∨  R x y
+  fun x y => x = y \/ R x y
+
+inductive closeTransRef {A} (R : Relation A) : A → A → Prop  
+| refl : ∀{a : A}, closeTransRef R a a
+| inject : ∀{x y : A}, R x y → closeTransRef R x y 
+| trans : ∀{x y z : A}, closeTransRef R x y → closeTransRef R y z → closeTransRef R x z  
 
 def liftRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
   (ctr : R x y → R' (f x) (f y))
@@ -711,3 +716,9 @@ theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
 -- theorem etaDiamond {Γ} {t t1 t2 : Term Γ}
 --   (p1 : StepEta t t1) (p2 : StepEta t t2)
 --   : Σ t', StepEta t1 t' × StepEta t2 t' :=
+
+theorem betaEtaCommuteProperty {Γ}
+  : square (@Step Γ) (@StepEta Γ) (closeTransRef (@StepEta Γ)) (closeRef (@Step Γ)) :=
+    _
+    -- fun p1 p2 =>
+    -- match p1, p2 with

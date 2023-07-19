@@ -381,16 +381,8 @@ theorem renSuccShift {n}
   -- intro x
   rfl
 
-theorem substCommute {n1 n2} {N : Term (succ n1)} {M : Term n1} {sub : Subst n1 n2}
-  : subLast (subst (exts sub) N) (subst sub M)
-    = subst sub (subLast N M) := by
-  simp [subLast]
-  -- rw [extsConsShift]
-  -- rw [substZConsIds]
-  -- rw [substZConsIds]
-  rw [subSub, subSub]
-  have p : (compose (exts sub) (substZero (subst sub M))) = (compose (substZero M) sub)
-    := by
+theorem substZeroSub {n1 n2} {M : Term n1} {sub : Subst n1 n2}
+  : (compose (exts sub) (substZero (subst sub M))) = (compose (substZero M) sub) := by
     rw [extsConsShift]
     rw [substZConsIds]
     rw [substZConsIds]
@@ -401,7 +393,16 @@ theorem substCommute {n1 n2} {N : Term (succ n1)} {M : Term n1} {sub : Subst n1 
     rw [subTail]
     rw [subIdR]
     rfl
-  rw [p]
+
+theorem substCommute {n1 n2} {N : Term (succ n1)} {M : Term n1} {sub : Subst n1 n2}
+  : subLast (subst (exts sub) N) (subst sub M)
+    = subst sub (subLast N M) := by
+  simp [subLast]
+  -- rw [extsConsShift]
+  -- rw [substZConsIds]
+  -- rw [substZConsIds]
+  rw [subSub, subSub]
+  rw [substZeroSub]
 
 theorem renameSubstCommute {Γ Δ} {N : Term (succ Γ)} {M : Term Γ} {ren : Ren Γ Δ}
   : subLast (rename (ext ren) N) (rename ren M) = rename ren (subLast N M) := by
@@ -412,9 +413,8 @@ theorem renameSubstCommute {Γ Δ} {N : Term (succ Γ)} {M : Term Γ} {ren : Ren
   rw [substCommute]
 
 --------------------------------------------------------------------------------
----------- This section came from Confluence.agda in plfa ----------------------
+---------- A proof of confluence -----------------------------------------------
 --------------------------------------------------------------------------------
--- I have modified this section from PLFA to handle eta
 
 inductive Par : ∀{Γ}, Term Γ → Term Γ → Type   
 | pvar : ∀{Γ} {x : Var Γ}, Par (var x) (var x)
@@ -442,19 +442,6 @@ theorem parRename {Γ} {M M' : Term Γ}
     apply Par.pbeta
     apply ih1
     apply ih2
-  | peta _p ih =>
-    intros
-    simp [rename]
-    rw [composeRename]
-    have lemma {n1 n2} {ren : Ren n1 n2}: ext ren ∘ Var.succ = Var.succ ∘ ren := by
-      apply funext
-      intro x
-      rfl
-    rw [lemma]
-    rw [<- composeRename]
-    simp [ext]
-    apply Par.peta
-    apply ih
 
 theorem parSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
   (ps : ParSubst sub1 sub2)
@@ -486,15 +473,6 @@ theorem substPar {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ}
     apply parSubstExts
     apply ps
     apply p
-  | Par.peta p => by
-    simp [subst]
-    rw [commuteSubstRename]
-    apply Par.peta
-    apply substPar
-    apply ps
-    apply p
-    intro x
-    rfl
 
 def parSubstZero {Γ} {M M' : Term Γ}
   (p : Par M M') : ParSubst (substZero M) (substZero M')
@@ -519,220 +497,217 @@ inductive MultiPar : ∀{Γ}, Term Γ → Term Γ → Type
 | step : {L M N : Term Γ}
   → Par L M → MultiPar M N → MultiPar L N
 
--- Σ' is called "psigma"
--- would need to generalize so that induction works in lambda case
--- def unweaken {Γ} (t : Term (succ Γ))
---   : Option (Σ' t', rename Var.succ t' = t) :=
---   -- should actually be (does not exists t' such that ...) ⊕ (Σ' t', rename Var.succ t' = t)
---   match t with
---   | var i => match i with
---     | Var.zero => none
---     | Var.succ i' => some ⟨var i', rfl⟩
---   | app t1 t2 => do
---     let ⟨t1', p1⟩ <- unweaken t1
---     let ⟨t2', p2⟩  <- unweaken t2
---     some ⟨app t1' t2', by simp [rename]; apply And.intro; apply p1; apply p2⟩ 
---   | lam t => do
---     let ⟨t', p⟩ <- unweaken t
-    -- some ⟨lam t', by simp [rename]; apply p⟩ 
+-- While on paper the Takahashi method leads to a cleaner proof, in a a theorem prover the proof
+-- will be ugly either way and this way is shorter.
+-- Also, using a takahashi function for beta-eta together seems to be very difficuly formally,
+-- since the eta rule involves a substiution
+theorem parDiamond {Γ} {t t1 t2 : Term Γ}
+  (p1 : Par t t1) (p2 : Par t t2)
+  : Σ t', Par t1 t' × Par t2 t' :=
+  match p1, p2 with
+  | Par.pvar, Par.pvar => ⟨_, Par.pvar, Par.pvar⟩
+  | Par.papp a1 b1, Par.papp a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨app a b, Par.papp pa1 pb1, Par.papp pa2 pb2⟩
+  | Par.pbeta a1 b1, Par.pbeta a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, subPar pa1 pb1, subPar pa2 pb2⟩
+  | Par.papp (Par.plam a1) b1, Par.pbeta a2 b2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, Par.pbeta pa1 pb1, subPar pa2 pb2⟩
+  | Par.pbeta a1 b1, Par.papp (Par.plam a2) b2 => -- REPEATED CASE
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
+    ⟨subLast a b, subPar pa1 pb1, Par.pbeta pa2 pb2⟩
+  | Par.plam a1, Par.plam a2 =>
+    let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
+    ⟨lam a, Par.plam pa1, Par.plam pa2⟩
 
-inductive PropToType (P : Prop) : Type
-| propToType : P → PropToType P
+-------- Relations - from Nipkow (2001)
+def Relation (A : Type) : Type := A → A → Prop  
 
+def closeRef {A} (R : Relation A) : Relation A :=
+  fun x y => x = y ∨  R x y
 
-inductive Decided (P : Prop) : Prop
-| yes : P → Decided P 
-| no : Not P → Decided P 
+def liftRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
+  (ctr : R x y → R' (f x) (f y))
+  : closeRef R x y → closeRef R' (f x) (f y) :=
+  fun s => match s with 
+  | Or.inl rfl => Or.inl rfl
+  | Or.inr s' => Or.inr (ctr s')
 
-inductive DecidedT (T : Type) : Type
-| yes : T → DecidedT T 
-| no : (T → False) → DecidedT T 
+def square {A} (R S T U : Relation A) : Prop :=
+  {x y z : A} → R x y → S x z → ∃ u, T y u ∧ U z u     
 
--- TODO: is it called a redEx?
-inductive BetaRedex {Γ} : Term Γ → Prop
-| redex : ∀ {t1 t2}, BetaRedex (app (lam t1) t2)
-
-inductive EtaRedex : ∀{Γ}, Term Γ → Prop
-| redex : ∀ {t}, EtaRedex (lam (app (rename Var.succ t) (var Var.zero)))
-
-inductive TermKind : ∀{Γ}, Term Γ → Type
-| betaRedex : ∀{Γ}, (t1 : Term (succ Γ)) → (t2 : Term Γ)
-  →  TermKind (app (lam t1) t2)
-| app : ∀{Γ}, (t1 t2 : Term Γ) → Not (BetaRedex (app t1 t2)) 
-  → TermKind (app t1 t2) 
-| etaRedex : ∀{Γ}, (t : Term (succ Γ))
-  → zFree t 
-  → TermKind (lam (app t (var Var.zero))) 
-| lam : ∀{Γ}, (t : Term (succ Γ))
-  → Not (EtaRedex (lam t))
-  → TermKind (lam t)
-| var : ∀{Γ}, (i : Var Γ) → TermKind (var i)
-
--- Note: this can be proven constructively, but for now I just have used LEM
-def unrename {n1 n2} (ren : Ren n1 n2) (t : Term n2)
-  : Decided (∃ t', rename ren t' = t) :=
-    match (Classical.em (∃ t', rename ren t' = t)) with
-    | Or.inl yes => Decided.yes yes
-    | Or.inr no => Decided.no no
-
-def unrename2 {n1 n2} (ren : Ren n1 n2) (t : Term n2)
-  : DecidedT (Σ' t', rename ren t' = t) := by sorry
-
-def findTermKind {Γ : Context} (t : Term Γ) : TermKind t :=
-  match t with
-  | (app (lam t1) t2) => TermKind.betaRedex _ _
-  | (app (var _) t2) => TermKind.app _ _ (by intro r; cases r)
-  | (app (app _ _) t2) => TermKind.app _ _ (by intro r; cases r)
-  | (Term.lam t) =>
-    let whatIsWrongWithLean {n} (t : Term (succ n)) : TermKind (lam t) :=
-      match t with
-      | var _ => TermKind.lam _ (by intro r; cases r)
-      | lam _ => TermKind.lam _ (by intro r; cases r)
-      | app t1 (var (Var.succ _)) => TermKind.lam _ (by intro r; cases r)
-      | app t1 (app _ _) => TermKind.lam _ (by intro r; cases r)
-      | app t1 (lam _) => TermKind.lam _ (by intro r; cases r)
-      | app t1 (var Var.zero) => match unrename2 Var.succ t1 with
-        | DecidedT.yes ⟨t', p⟩ => by
-          rw [<- p]
-          exact TermKind.etaRedex _ ⟨_, rfl⟩ 
-        | DecidedT.no p => TermKind.lam _ (by
-          intro x
-          cases x with
-          | @redex t =>
-            apply p
-            exists t
-        )
-    whatIsWrongWithLean t
-  | (var _) => TermKind.var _
+--     x --R-- y
+--     |       |
+--     S       T
+--     |       |
+--     z --U-- u
 
 
--- See this for lean's features for proving termination:
--- https://leanprover.github.io/theorem_proving_in_lean4/induction_and_recursion.html
+------- Eta
 
--- see also: https://www.cs.vu.nl/~jbe248/lv2017/12x4.pdf
--- see https://doi.org/10.1006/inco.1995.1057
--- universal common reduct
+def dummy : ∀{Γ}, Term Γ := lam (var Var.zero)
 
--- the Takahashi function
-def ucr {Γ} (t : Term Γ) : Term Γ :=
-  match findTermKind t with
-  | TermKind.betaRedex t1 t2 => subLast (ucr t1) (ucr t2)
-  | TermKind.app t1 t2 _p => app (ucr t1) (ucr t2)
-  | TermKind.lam t _p => lam (ucr t)
-  | TermKind.etaRedex t _p => subLast (ucr t) dummy
-  | TermKind.var i => var i
+def renFree {Γ1 Γ2} (ren : Ren Γ1 Γ2) (t : Term Γ2) : Prop :=
+  ∃ t', rename ren t' = t 
 
-theorem ucrRenCommute {n1 n2} {ren : Ren n1 n2} {t : Term n1}
-  -- ucr (rename ren t) = rename ren (ucr t) :=
-  : rename ren (ucr t) = ucr (rename ren t) := by
-  generalize bla: (findTermKind t) = val
-  -- apply Eq.trans
-  unfold ucr
-  exact (
-    match findTermKind t with
-    | TermKind.betaRedex t1 t2 => _
-    | TermKind.app t1 t2 _p => by
-      --
-      simp
-      --
-      apply Eq.trans
-      unfold ucr
-      have please: findTermKind (app t1 t2) = val := bla
-      rw [please]
-      simp
-      --
-      simp [ucr]
-      --
-    | TermKind.lam t _p => _
-    | TermKind.etaRedex t _p => _
-    | TermKind.var i => rfl
-  )
+def zFree {Γ} (t : Term (succ Γ)) : Prop := renFree Var.succ t
 
+inductive StepEta : ∀{Γ}, Term Γ → Term Γ → Prop where  
+| app1 : ∀ {Γ} {L L' M : Term Γ},
+    StepEta L L'
+    → StepEta (app L M) (app L' M)
+| app2 : ∀ {Γ} {L M M' : Term Γ},
+    StepEta M M'
+    → StepEta (app L M) (app L M')
+| lam : ∀ {Γ} {N N' : Term (succ Γ)},
+    StepEta N N' → StepEta (lam N) (lam N')
+| eta : ∀{Γ} {M : Term (succ Γ)},
+ -- The idea to use subsitution here is from Nipkow 2001
+  zFree M
+  → StepEta (lam (app M (var Var.zero))) (subLast M dummy)
 
-theorem findKindLam {Γ} {t : Term (succ Γ)} (notRedex : ¬ EtaRedex (lam t))
-  : findTermKind (lam t) = TermKind.lam t notRedex :=
-  match t, findTermKind (lam t) with
-  | .(_), TermKind.lam _ p => rfl
-  | .(_), TermKind.etaRedex _ p => by
-    apply False.elim
-    apply notRedex
-    apply Exists.elim
-    apply p
-    intro t' proof
-    rw [<- proof]
-    apply EtaRedex.redex
+def EtaSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Prop :=
+  {x : Var Γ} → StepEta (sub1 x) (sub2 x)
 
-theorem ucrLam {Γ} {t : Term (succ Γ)} (notRedex : ¬ EtaRedex (lam t))
-  : ucr (lam t) = lam (ucr t) := by
-  apply Eq.trans
-  unfold ucr
-  rw [findKindLam notRedex]
-  simp
+theorem etaRename {Γ} {M M' : Term Γ}
+  (p : StepEta M M') 
+  : ∀{Δ}, {ren : Ren Γ Δ} → StepEta (rename ren M) (rename ren M') := by
+  induction p with
+  | lam _p ih => intros; simp [rename]; apply StepEta.lam; apply ih
+  | app1 _p ih => intros; simp [rename]; apply StepEta.app1; apply ih
+  | app2 _p ih => intros; simp [rename]; apply StepEta.app2; apply ih
+  | @eta _ M zf => -- surely I could have written this proof better...
+    intro Δ ren
+    simp [rename]
+    rw [<- renameSubstCommute]
+    apply StepEta.eta
+    simp [zFree, renFree]
+    apply Exists.elim; apply zf; intro t' eq
+    exists (rename ren t')
+    rw [composeRename]
+    have eq' : rename ((ext ren) ∘ Var.succ) t' = rename (ext ren) M := by
+      rw [<- composeRename]
+      apply congrArg
+      apply eq
+    have lemma {n1 n2} {ren : Ren n1 n2} : ((ext ren) ∘ Var.succ) = Var.succ ∘ ren := by 
+      apply funext
+      intro x
+      cases x
+      . rfl
+      . rfl
+    rw [<- lemma]
+    apply eq'
 
-theorem ucrEtaRedex {Γ} {t : Term Γ}
-  : ucr (lam (app (rename Var.succ t) (var Var.zero))) = ucr t := by
-  have lemma : ∃ p, findTermKind (lam (app (rename Var.succ t) (var Var.zero)))
-    = TermKind.etaRedex (rename Var.succ t) p :=
-    match t, findTermKind (lam (app (rename Var.succ t) (var Var.zero))) with
-    | .(_), TermKind.lam _ p => by apply False.elim; apply p; apply EtaRedex.redex
-    | .(_), TermKind.etaRedex _ p => by exists p
-  --
-  apply Eq.trans
-  unfold ucr
-  apply Exists.elim; apply lemma; intro a proof
-  rw [proof]
-  simp
-  sorry
+theorem lamRenFree {n2} {M : Term (succ n2)} {ren : Ren n1 n2}
+  : renFree (ext ren) M ↔ renFree ren (lam M) :=
+    Iff.intro
+      (fun ⟨t, renProof⟩ => ⟨lam t, by simp [rename]; apply renProof⟩)
+      (fun ⟨lam t, renProof⟩ => ⟨ t, by simp [rename] at renProof; apply renProof⟩)
 
-theorem parTriangle {Γ} {M N : Term Γ} (step: Par M N) : Par N (ucr M) :=
-  match findTermKind M with
-  | TermKind.betaRedex t1 t2 =>
-    match step with
-    | Par.pbeta p1 p2 => by
-      simp [ucr]
-      apply subPar
-      apply parTriangle; apply p1
-      apply parTriangle; apply p2
-    | Par.papp (Par.plam p1) p2 => by
-      simp [ucr]
-      apply Par.pbeta
-      apply parTriangle; apply p1
-      apply parTriangle; apply p2
-    | Par.papp (Par.peta p1) p2 => by
-      simp [ucr]
-      sorry
-      --
-  | TermKind.app t1 t2 notRedex =>
-    match step with
-    | Par.pbeta p1 p2 => by apply False.elim; apply notRedex; apply BetaRedex.redex
-    | Par.papp p1 p2 => _
-  | TermKind.lam t notRedex =>
-    match step with
-    | Par.peta p => by apply False.elim; apply notRedex; apply EtaRedex.redex
-    | Par.plam p => by
-      simp [ucr]
-      rw [ucrLam notRedex]
-      apply Par.plam
-      apply parTriangle
-      apply p
-  | TermKind.etaRedex t p =>
-    match step with
-    | Par.plam p => _
-    | Par.peta p => by
-      rw [ucrEtaRedex]
-      apply parTriangle; apply p
-  | TermKind.var i =>
-    match step with
-    | Par.pvar => parRefl
+theorem appRenFree {n2} {M N : Term n2} {ren : Ren n1 n2}
+  : (renFree ren M /\ renFree ren N) ↔ renFree ren (app M N) :=
+    Iff.intro
+      (fun ⟨⟨t1, p1⟩, ⟨t2, p2⟩⟩ => ⟨app t1 t2, by simp [rename]; apply And.intro; apply p1; apply p2⟩)
+      (fun ⟨app t1 t2, p⟩ =>
+        ⟨⟨t1, by simp [rename] at p; apply (And.left p)⟩
+        , ⟨t2, by simp [rename] at p; apply (And.right p)⟩⟩)
+
+theorem stepEtaZFree {n1 n2} {M N : Term n2} (step : StepEta M N) {ren : Ren n1 n2}
+  (rf : renFree ren M) : renFree ren N :=
+  match step with
+  | StepEta.app1 p => Iff.mp appRenFree
+    ⟨stepEtaZFree p (And.left (Iff.mpr appRenFree rf))
+    , (And.right (Iff.mpr appRenFree rf))⟩  
+  | StepEta.app2 p => Iff.mp appRenFree
+    ⟨(And.left (Iff.mpr appRenFree rf))
+    , stepEtaZFree p (And.right (Iff.mpr appRenFree rf))⟩  
+  | StepEta.lam p => Iff.mp lamRenFree (stepEtaZFree p (Iff.mpr lamRenFree rf))
+  | StepEta.eta zf =>
+    let ⟨t, p⟩ := And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf))
+    ⟨subLast t dummy, (by 
+      rw [<- renameSubstCommute]
+      rw [p]
+      rfl
+      ) ⟩
 
 
+-- TODO: I think that this version doesn't hold for single step eta
+-- theorem substEta {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ}
+--   (ps : EtaSubst sub1 sub2) (p : StepEta M M')
+--   : StepEta (subst sub1 M) (subst sub2 M') :=
+--   match p with
+--   | StepEta.app1 p => by
+--     simp [subst]
+--     apply StepEta.app1
+--     --
+--   | StepEta.app2 p => _
+--   | StepEta.eta p => _
+--   | StepEta.lam p => _
+
+theorem substEta {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
+  (p : StepEta M M')
+  : StepEta (subst sub M) (subst sub M') :=
+  match p with
+  | StepEta.app1 p => StepEta.app1 (substEta p)
+  | StepEta.app2 p => StepEta.app2 (substEta p)
+  | StepEta.lam p => StepEta.lam (substEta p)
+  | @StepEta.eta _ M zf => by
+    simp [subst]
+    simp [subLast]
+    rw [subSub]
+    rw [<- substZeroSub]
+    rw [<- subSub]
+    apply StepEta.eta
+    simp [zFree, renFree] at *
+    apply Exists.elim; apply zf; intro t' eq
+    exists (subst sub t')
+    have eq' : subst (exts sub) (rename (Var.succ) t') = subst (exts sub) M := by
+      apply congrArg
+      apply eq
+    rw [<- commuteSubstRename]
+    apply eq'
+    intro x
+    cases x
+    . rfl
+    . rfl
+
+def rfStepEta {Γ} := closeRef (@StepEta Γ)
+
+def app1' {Γ} {a1 a2 b : Term Γ} (s : rfStepEta a1 a2)
+  : rfStepEta (app a1 b) (app a2 b) :=
+  match s with
+  | Or.inl rfl => Or.inl rfl
+  | Or.inr s' => Or.inr (StepEta.app1 s')
 
 
--- Idea: I will use a direct takahashi proof for beta and eta at once.
--- I will alter the definition of takahashi first using the idea from Nipkow 2001 that
--- I can define eta contraction with substitution on the right instead of renaming
--- on the left. Next, I will also modify the Takahashi function so that
--- takahashi (lam x . t x) where x ∉ t = (takahashi t) [x / dummy] 
---   instead of takahashi (t [x / dummy])
--- This way, it will be recursive on the structure of the terms.
--- I will then later have to prove that 
+theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
+  (closeRef (@StepEta Γ)) (closeRef (@StepEta Γ)) :=
+  fun p1 p2 =>
+  match p1, p2 with
+  | StepEta.app1 s1, StepEta.app1 s2 =>
+    let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
+    ⟨app u _, liftRef (fun x => app x _) StepEta.app1 bla1, liftRef (fun x => app x _) StepEta.app1 bla2⟩
+  | StepEta.app1 s1, StepEta.app2 s2 =>
+    ⟨_, Or.inr (StepEta.app2 s2), Or.inr (StepEta.app1 s1)⟩
+  | StepEta.app2 s1, StepEta.app1 s2 => -- REPEATED CASE
+    ⟨_, Or.inr (StepEta.app1 s2), Or.inr (StepEta.app2 s1)⟩
+  | StepEta.app2 s1, StepEta.app2 s2 =>
+    let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
+    ⟨app _ u, liftRef (app _) StepEta.app2 bla1, liftRef (app _) StepEta.app2 bla2⟩
+  | StepEta.lam s1, StepEta.lam s2 =>
+    let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
+    ⟨lam u, liftRef lam StepEta.lam bla1, liftRef lam StepEta.lam bla2⟩
+  | StepEta.eta zf1, StepEta.eta zf2 => ⟨_, Or.inl rfl, Or.inl rfl⟩
+  | StepEta.lam (StepEta.app1 s), StepEta.eta zf =>
+    ⟨_, Or.inr (StepEta.eta (stepEtaZFree s zf)), Or.inr (substEta s)⟩
+  | StepEta.eta zf, StepEta.lam (StepEta.app1 s) => -- REPEATED CASE
+    ⟨_, Or.inr (substEta s), Or.inr (StepEta.eta (stepEtaZFree s zf))⟩
+-- theorem etaDiamond {Γ} {t t1 t2 : Term Γ}
+--   (p1 : StepEta t t1) (p2 : StepEta t t2)
+--   : Σ t', StepEta t1 t' × StepEta t2 t' :=

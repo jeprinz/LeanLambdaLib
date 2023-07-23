@@ -371,14 +371,6 @@ theorem subAssoc {n1 n2 n3 n4} {sub1 : Subst n1 n2} {sub2 : Subst n2 n3}
   simp [compose]
   apply subSub
 
-#check substZConsIds
-#check extsConsShift
-#check subDist
-#check subAssoc
-#check subIdR
-#check subIdL
-#check substZConsIds
-
 theorem subTail {n1 n2} {M : Term n2} {sub : Subst n1 n2}
   : compose shift (cons M sub) = sub := by
   apply funext

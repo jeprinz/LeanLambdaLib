@@ -95,8 +95,8 @@ inductive Step : ∀{Γ}, Term Γ → Term Γ → Type where
 | lam : ∀ {Γ} {N N' : Term (succ Γ)},
     Step N N' → Step (lam N) (lam N')
 
-| eta : ∀{Γ} {N : Term Γ},
-    Step (lam (app (rename Var.succ N) (var Var.zero))) N
+-- | eta : ∀{Γ} {N : Term Γ},
+--     Step (lam (app (rename Var.succ N) (var Var.zero))) N
 
 -- infix:50 " ==> " => Step
 
@@ -527,25 +527,42 @@ theorem parDiamond {Γ} {t t1 t2 : Term Γ}
     ⟨lam a, Par.plam pa1, Par.plam pa2⟩
 
 -------- Relations - from Nipkow (2001)
-def Relation (A : Type) : Type := A → A → Prop
+def Relation (A : Type) : Type 1 := A → A → Type
+
+inductive Proof (P : Prop) : Type
+| proof : P → Proof P
+
+inductive TypeInhabited (P : Type n) : Prop
+| elem : P → TypeInhabited P 
+
+inductive DownLevel (T : Type 1) : Type 0 -- Hmmmm
+| inhabited : Proof (TypeInhabited T) -> DownLevel T
 
 def closeRef {A} (R : Relation A) : Relation A :=
-  fun x y => x = y \/ R x y
+  fun x y => (Proof (x = y)) ⊕ R x y
 
-inductive closeTransRef {A} (R : Relation A) : A → A → Prop  
+def liftRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
+  (ctr : ∀{x y}, R x y → R' (f x) (f y))
+  : closeRef R x y → closeRef R' (f x) (f y) :=
+  fun s => match s with 
+  | Sum.inl (Proof.proof rfl) => Sum.inl (Proof.proof rfl)
+  | Sum.inr s' => Sum.inr (ctr s')
+
+inductive closeTransRef {A} (R : Relation A) : A → A → Type
 | refl : ∀{a : A}, closeTransRef R a a
 | inject : ∀{x y : A}, R x y → closeTransRef R x y 
 | trans : ∀{x y z : A}, closeTransRef R x y → closeTransRef R y z → closeTransRef R x z  
 
-def liftRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
-  (ctr : R x y → R' (f x) (f y))
-  : closeRef R x y → closeRef R' (f x) (f y) :=
-  fun s => match s with 
-  | Or.inl rfl => Or.inl rfl
-  | Or.inr s' => Or.inr (ctr s')
+def liftTransRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
+  (ctr : ∀{x y}, R x y → R' (f x) (f y))
+  : closeTransRef R x y → closeTransRef R' (f x) (f y) :=
+  fun s => match s with
+  | closeTransRef.refl => closeTransRef.refl
+  | closeTransRef.inject rxy => closeTransRef.inject (ctr rxy)
+  | closeTransRef.trans xy yz => closeTransRef.trans (liftTransRef f ctr xy) (liftTransRef f ctr yz)
 
 def square {A} (R S T U : Relation A) : Prop :=
-  {x y z : A} → R x y → S x z → ∃ u, T y u ∧ U z u     
+  {x y z : A} → R x y → S x z → ∃ u, TypeInhabited (T y u × U z u)
 
 --     x --R-- y
 --     |       |
@@ -563,7 +580,7 @@ def renFree {Γ1 Γ2} (ren : Ren Γ1 Γ2) (t : Term Γ2) : Prop :=
 
 def zFree {Γ} (t : Term (succ Γ)) : Prop := renFree Var.succ t
 
-inductive StepEta : ∀{Γ}, Term Γ → Term Γ → Prop where  
+inductive StepEta : ∀{Γ}, Term Γ → Term Γ → Type where  
 | app1 : ∀ {Γ} {L L' M : Term Γ},
     StepEta L L'
     → StepEta (app L M) (app L' M)
@@ -577,7 +594,7 @@ inductive StepEta : ∀{Γ}, Term Γ → Term Γ → Prop where
   zFree M
   → StepEta (lam (app M (var Var.zero))) (subLast M dummy)
 
-def EtaSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Prop :=
+def EtaSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
   {x : Var Γ} → StepEta (sub1 x) (sub2 x)
 
 theorem etaRename {Γ} {M M' : Term Γ}
@@ -684,13 +701,6 @@ theorem substEta {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
 
 def rfStepEta {Γ} := closeRef (@StepEta Γ)
 
-def app1' {Γ} {a1 a2 b : Term Γ} (s : rfStepEta a1 a2)
-  : rfStepEta (app a1 b) (app a2 b) :=
-  match s with
-  | Or.inl rfl => Or.inl rfl
-  | Or.inr s' => Or.inr (StepEta.app1 s')
-
-
 theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
   (closeRef (@StepEta Γ)) (closeRef (@StepEta Γ)) :=
   fun p1 p2 =>
@@ -699,26 +709,67 @@ theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
     let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
     ⟨app u _, liftRef (fun x => app x _) StepEta.app1 bla1, liftRef (fun x => app x _) StepEta.app1 bla2⟩
   | StepEta.app1 s1, StepEta.app2 s2 =>
-    ⟨_, Or.inr (StepEta.app2 s2), Or.inr (StepEta.app1 s1)⟩
+    ⟨_, Sum.inr (StepEta.app2 s2), Sum.inr (StepEta.app1 s1)⟩
   | StepEta.app2 s1, StepEta.app1 s2 => -- REPEATED CASE
-    ⟨_, Or.inr (StepEta.app1 s2), Or.inr (StepEta.app2 s1)⟩
+    ⟨_, Sum.inr (StepEta.app1 s2), Sum.inr (StepEta.app2 s1)⟩
   | StepEta.app2 s1, StepEta.app2 s2 =>
     let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
     ⟨app _ u, liftRef (app _) StepEta.app2 bla1, liftRef (app _) StepEta.app2 bla2⟩
   | StepEta.lam s1, StepEta.lam s2 =>
     let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
     ⟨lam u, liftRef lam StepEta.lam bla1, liftRef lam StepEta.lam bla2⟩
-  | StepEta.eta zf1, StepEta.eta zf2 => ⟨_, Or.inl rfl, Or.inl rfl⟩
+  | StepEta.eta zf1, StepEta.eta zf2 => ⟨_, Sum.inl (Proof.proof rfl), Sum.inl (Proof.proof rfl)⟩
   | StepEta.lam (StepEta.app1 s), StepEta.eta zf =>
-    ⟨_, Or.inr (StepEta.eta (stepEtaZFree s zf)), Or.inr (substEta s)⟩
+    ⟨_, Sum.inr (StepEta.eta (stepEtaZFree s zf)), Sum.inr (substEta s)⟩
   | StepEta.eta zf, StepEta.lam (StepEta.app1 s) => -- REPEATED CASE
-    ⟨_, Or.inr (substEta s), Or.inr (StepEta.eta (stepEtaZFree s zf))⟩
+    ⟨_, Sum.inr (substEta s), Sum.inr (StepEta.eta (stepEtaZFree s zf))⟩
 -- theorem etaDiamond {Γ} {t t1 t2 : Term Γ}
 --   (p1 : StepEta t t1) (p2 : StepEta t t2)
 --   : Σ t', StepEta t1 t' × StepEta t2 t' :=
 
 theorem betaEtaCommuteProperty {Γ}
   : square (@Step Γ) (@StepEta Γ) (closeTransRef (@StepEta Γ)) (closeRef (@Step Γ)) :=
-    _
-    -- fun p1 p2 =>
-    -- match p1, p2 with
+    fun {t} {tLeft} {tRight} p1 p2 =>
+    match p1, p2 with
+    | Step.app1 p1, StepEta.app1 p2 =>
+      let ⟨t', TypeInhabited.elem ⟨q1, q2⟩⟩ := betaEtaCommuteProperty p1 p2 
+      ⟨_, TypeInhabited.elem ⟨liftTransRef (fun x => app x _) StepEta.app1 q1,
+        liftRef (fun x => app x _) Step.app1 q2⟩⟩ 
+    | Step.app2 p1, StepEta.app2 p2 =>
+      let ⟨t', TypeInhabited.elem ⟨q1, q2⟩⟩ := betaEtaCommuteProperty p1 p2 
+      ⟨_, TypeInhabited.elem ⟨liftTransRef (app _) StepEta.app2 q1,
+        liftRef (app _) Step.app2 q2⟩⟩ 
+    | Step.lam p1, StepEta.lam p2 =>
+      let ⟨t', TypeInhabited.elem ⟨q1, q2⟩⟩ := betaEtaCommuteProperty p1 p2 
+      ⟨_, TypeInhabited.elem ⟨liftTransRef lam StepEta.lam q1,
+        liftRef lam Step.lam q2⟩⟩ 
+    | Step.app1 p1, StepEta.app2 p2 =>
+      ⟨_, TypeInhabited.elem ⟨closeTransRef.inject (StepEta.app2 p2),
+        Sum.inr (Step.app1 p1)⟩⟩
+    | Step.app2 p1, StepEta.app1 p2 => -- REPEATED CASE
+      ⟨_, TypeInhabited.elem ⟨closeTransRef.inject (StepEta.app1 p2)
+          , Sum.inr (Step.app2 p1)⟩⟩
+    | Step.beta, StepEta.app2 p => _
+    | Step.beta, StepEta.app1 p => _
+    | Step.lam p, StepEta.eta zf => by
+      cases p with
+      | app1 p' => sorry
+      | beta => sorry
+      | app2 p' => cases p'
+
+
+
+
+    -- fun {t} {tLeft} {tRight} p1 p2 =>
+    -- match t, p1, p2 with
+    -- | .(_), Step.app1 p1, StepEta.app1 p2 => _
+    -- | .(_), Step.app2 p1, StepEta.app2 p2 => _
+    -- | .(_), Step.lam p1, StepEta.lam p2 => _
+    -- -- | (lam .(app _ _)), Step.lam p, StepEta.eta zf => _
+    -- | .(_), Step.lam Step.beta, StepEta.eta zf => _
+    -- | .(_), Step.lam (Step.app1 p), StepEta.eta zf => _
+    -- -- -- | Step.lam (Step.app2 p), StepEta.eta zf => _
+    -- | .(_), Step.beta, StepEta.app1 p => _
+    -- | .(_), Step.beta, StepEta.app2 p => _
+    -- | .(_), Step.app1 p1, StepEta.app2 p2 => _
+    -- | .(_), Step.app2 p1, StepEta.app1 p2 => _ -- REPEATED CASE

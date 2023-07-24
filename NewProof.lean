@@ -335,6 +335,9 @@ inductive TypeInhabited (P : Type n) : Prop
 inductive DownLevel (T : Type 1) : Type 0 -- Hmmmm
 | inhabited : Proof (TypeInhabited T) -> DownLevel T
 
+-- reflexive closure of a relation
+inductive reflClosure {A} (R : Relation A) : A → A → Type := _
+
 -- transitive relflexive closure of a relation
 inductive closure {A} (R : Relation A) : A → A → Type
 | refl : ∀{a : A}, closure R a a
@@ -399,6 +402,9 @@ def dummy : ∀{Γ}, Term Γ := lam (var Var.zero)
 def renFree {Γ1 Γ2} (ren : Ren Γ1 Γ2) (t : Term Γ2) : Prop :=
   ∃ t', rename ren t' = t 
 
+def subRenFree {Γ1 Γ Γ2} (ren : Ren Γ Γ2) (sub : Subst Γ1 Γ2) : Prop :=
+  (x : Var Γ1) → renFree ren (sub x) 
+
 def zFree {Γ} (t : Term (succ Γ)) : Prop := renFree Var.succ t
 
 -- parallel beta-eta reduction
@@ -410,12 +416,9 @@ inductive Par : ∀{Γ}, Term Γ → Term Γ → Type
   Par L L' → Par M M' → Par (app L M) (app L' M')   
 | beta : ∀{Γ}{N N' : Term (succ Γ)} {M M' : Term Γ},
   Par N N' → Par M M' → Par (app (lam N) M) (subLast N' M')  
--- | eta : ∀{Γ} {M M' : Term Γ},
---   Par M M'
---   → Par (lam (app (rename Var.succ M) (var Var.zero))) M'
 | eta : ∀{Γ} {M M' : Term (succ Γ)},
   Par M M'
-→ zFree M
+  → zFree M'
   → Par (lam (app M (var Var.zero))) (subLast M' dummy)
 
 -- non-parallel beta-eta reduction
@@ -423,17 +426,13 @@ inductive Step : ∀{Γ}, Term Γ → Term Γ → Type where
 | app1 : ∀ {Γ} {L L' M : Term Γ},
     Step L L'
     → Step (app L M) (app L' M)
-
 | app2 : ∀ {Γ} {L M M' : Term Γ},
     Step M M'
     → Step (app L M) (app L M')
-
 | beta : ∀ {Γ} {N : Term (succ Γ)} {M : Term Γ},
     Step (app (lam N) M) (subLast N M)
-
 | lam : ∀ {Γ} {N N' : Term (succ Γ)},
     Step N N' → Step (lam N) (lam N')
-
 | eta : ∀{Γ} {N : Term (succ Γ)},
     zFree N
     → Step (lam (app N (var Var.zero))) (subLast N dummy)
@@ -444,8 +443,68 @@ theorem parRefl {Γ} {M : Term Γ} : Par M M := by
   | app t1 t2 ih1 ih2 => apply Par.app; apply ih1; apply ih2
   | lam t ih => apply Par.lam; apply ih
 
-def ParSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
-  {x : Var Γ} →Par (sub1 x) (sub2 x)
+def RelSubst {n2} (R : Relation (Term n2)) {n1} (sub1 sub2 : Subst n1 n2) : Type :=
+  {x : Var n1} → R (sub1 x) (sub2 x) 
+
+def commutesSub (R : ∀{n}, Relation (Term n)) : Type :=
+  ∀{Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ},
+    (RelSubst R sub1 sub2) → (R M M')
+    → R (subst sub1 M) (subst sub2 M')
+
+-- I wrote this stuff to help with multiSubst, but is it necessary?
+-- inductive MultiSubst {n1 n2} (R : Relation (Term n2)) : Subst n1 n2 → Subst n1 n2 → Type :=  
+-- | refl : ∀{sub}, MultiSubst R sub sub 
+-- | cons : ∀{sub1 sub2 sub3},
+--   RelSubst R sub1 sub2 → MultiSubst R sub2 sub3 → MultiSubst R sub1 sub3 
+
+-- theorem multiSubstToClosureSubst {n1 n2} (R : Relation (Term n2))
+--   (sub1 sub2 : Subst n1 n2)
+--   : (MultiSubst R sub1 sub2) → (RelSubst (closure R) sub1 sub2) :=
+--   fun multiSubst {_x} => match multiSubst with
+--   | MultiSubst.refl => closure.refl
+--   | MultiSubst.cons r m => closure.cons r (multiSubstToClosureSubst _ _ _ m)
+
+-- theorem subZeroEqual {n} (sub1 sub2 : Subst zero n) : sub1 = sub2 := by
+--   apply funext
+--   intro x
+--   cases x
+
+-- theorem closureSubstToMultiSubst {n1 n2} (R : Relation (Term n2))
+--   (sub1 sub2 : Subst n1 n2)
+--   : (RelSubst (closure R) sub1 sub2) → (MultiSubst R sub1 sub2) :=
+--   match n1 with
+--   | zero => by rw [subZeroEqual sub1 sub2]; intros; apply MultiSubst.refl
+--   | Nat.succ n1' =>
+--     let ih := closureSubstToMultiSubst R (fun {x} => sub1 (Var.succ x)) (fun {x} => sub2 (Var.succ x))
+--     _
+
+theorem multiSubst1 (R : ∀{n}, Relation (Term n))
+  (liftLam : ∀{n} {x y : Term (succ n)}, R x y → R (lam x) (lam y))
+  : commutesSub R
+  → 
+  ∀{Γ Δ} {sub1 sub2 : Subst Γ Δ} {M : Term Γ},
+    (RelSubst (closure R) sub1 sub2)
+    → closure R (subst sub1 M) (subst sub2 M)
+  := fun commutesR {Γ} {Δ} {sub1} {sub2} {M} rsub =>
+    match M with
+    | var i => @rsub i
+    | lam t =>
+      let bla := @multiSubst1 R liftLam commutesR (succ Γ) (succ Δ) (exts sub1) (exts sub2) t _ -- rsub
+      liftCsr lam liftLam bla
+    | app a b => _
+
+
+theorem multiSubst (R : ∀{n}, Relation (Term n))
+  : commutesSub R → commutesSub (fun {n} => closure (@R n)) := by 
+  intro commutesR
+  simp [commutesSub]
+  intro Γ Δ sub1 sub2 M M' rsub rm
+  induction rm with
+  | refl => sorry
+  | cons => sorry
+
+
+def ParSubst {Γ} {Δ} : (sub1 sub2 : Subst Γ Δ) → Type := RelSubst Par
 
 theorem parRename {Γ} {M M' : Term Γ}
   (p : Par M M') 
@@ -471,10 +530,7 @@ theorem parRename {Γ} {M M' : Term Γ}
     apply Exists.elim; apply zf; intro t' eq
     exists (rename ren t')
     rw [composeRename]
-    have eq' : rename ((ext ren) ∘ Var.succ) t' = rename (ext ren) M := by
-      rw [<- composeRename]
-      apply congrArg
-      apply eq
+    rw [<- eq]
     have lemma {n1 n2} {ren : Ren n1 n2} : ((ext ren) ∘ Var.succ) = Var.succ ∘ ren := by 
       apply funext
       intro x
@@ -482,7 +538,7 @@ theorem parRename {Γ} {M M' : Term Γ}
       . rfl
       . rfl
     rw [<- lemma]
-    apply eq'
+    rw [composeRename]
 
 theorem parSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
   (ps : ParSubst sub1 sub2)
@@ -525,12 +581,9 @@ theorem substPar {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ}
     apply p
     simp [zFree, renFree] at *
     apply Exists.elim; apply zf; intro t' eq
-    exists (subst sub1 t')
-    have eq' : subst (exts sub1) (rename (Var.succ) t') = subst (exts sub1) _ := by -- _ is M✝
-      apply congrArg
-      apply eq
+    exists (subst sub2 t')
+    rw [<- eq]
     rw [<- commuteSubstRename]
-    apply eq'
     intro x
     cases x
     . rfl
@@ -547,6 +600,42 @@ theorem subPar {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
   (p1 : Par N N') (p2 : Par M M')
   : Par (subLast N M) (subLast N' M') :=
   substPar (parSubstZero p2) p1
+
+theorem multiParSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
+  (ps : RelSubst (closure Par) sub1 sub2)
+  : RelSubst (closure Par) (exts sub1) (exts sub2) := by
+  intro x
+  cases x with
+  | zero =>  apply closure.refl
+  | succ x' => simp [exts]; apply (liftCsr _ _ (@ps x')); intro _ _ p; apply parRename; apply p
+
+theorem multiParSubst1 :
+  ∀{Γ Δ} {sub1 sub2 : Subst Γ Δ} {M : Term Γ},
+    (RelSubst (closure Par) sub1 sub2)
+    → closure Par (subst sub1 M) (subst sub2 M)
+  := fun {Γ} {Δ} {sub1} {sub2} {M} rsub =>
+    match M with
+    | var i => @rsub i
+    | lam t =>
+      let bla := @multiParSubst1 (succ Γ) (succ Δ) (exts sub1) (exts sub2) t (multiParSubstExts rsub)
+      liftCsr lam Par.lam bla
+    | app a b =>
+      let bla1 := @multiParSubst1 Γ Δ sub1 sub2 a rsub
+      let bla2 := @multiParSubst1 Γ Δ sub1 sub2 b rsub
+      transitivity (liftCsr (fun x => app x _) (fun p => Par.app p parRefl) bla1)
+      (liftCsr (app _) (fun p => Par.app parRefl p) bla2)
+
+theorem multiParSubst
+  : commutesSub (fun {n} => closure (@Par n)) := by 
+  intro Γ Δ sub1 sub2 M M' rsub rm
+  apply transitivity
+  apply (multiParSubst1 rsub)
+  induction rm with
+  | refl => apply closure.refl
+  | cons s _ss ih =>
+    apply closure.cons
+    apply substPar; apply (fun {x} => parRefl); apply s
+    apply ih
 
 theorem stepToPar {Γ} {t1 t2 : Term Γ}
   (step : Step t1 t2) : Par t1 t2 :=
@@ -572,10 +661,7 @@ theorem parToMultiStep {Γ} {t1 t2 : Term Γ}
   | Par.eta s zf =>
     transitivity
     (liftCsr (fun x => lam (app x _)) (Step.lam ∘ Step.app1) (parToMultiStep s))
-    (oneStep (Step.eta _))
-    -- transitivity
-    --   (oneStep (Step.eta zf))
-    --   _
+    (oneStep (Step.eta zf))
 
 theorem lamRenFree {n2} {M : Term (succ n2)} {ren : Ren n1 n2}
   : renFree (ext ren) M ↔ renFree ren (lam M) :=
@@ -591,27 +677,52 @@ theorem appRenFree {n2} {M N : Term n2} {ren : Ren n1 n2}
         ⟨⟨t1, by simp [rename] at p; apply (And.left p)⟩
         , ⟨t2, by simp [rename] at p; apply (And.right p)⟩⟩)
 
-theorem parZFree {n1 n2} {M N : Term n2} (step : Par M N) {ren : Ren n1 n2}
+
+theorem stepZFree {n1 n2} {M N : Term n2} (step : Step M N) {ren : Ren n1 n2}
   (rf : renFree ren M) : renFree ren N :=
   match step with
-  | Par.var => rf
-  | Par.app p1 p2 => Iff.mp appRenFree
-    ⟨parZFree p1 (And.left (Iff.mpr appRenFree rf))
-    , parZFree p2 (And.right (Iff.mpr appRenFree rf))⟩  
-  | Par.lam p => Iff.mp lamRenFree (parZFree p (Iff.mpr lamRenFree rf))
-  | Par.beta p1 p2 => _
-  | Par.eta p zf =>
-    let M'zf := parZFree p zf
-    let thing1 := parZFree p (And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf)))
-    let thing2 := And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf))
-    let ⟨t, proof⟩ := parZFree p (And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf)))
-    let ⟨t', proof'⟩ := And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf))
-    ⟨subLast t dummy, (by 
-      rw [<- renameSubstCommute]
-      rw [<- proof]
-      -- rfl
-      sorry
-      ) ⟩
+  | Step.app1 p => Iff.mp appRenFree
+    ⟨stepZFree p (And.left (Iff.mpr appRenFree rf))
+    , And.right (Iff.mpr appRenFree rf)⟩  
+  | Step.app2 p => Iff.mp appRenFree
+    ⟨And.left (Iff.mpr appRenFree rf)
+    , stepZFree p (And.right (Iff.mpr appRenFree rf))⟩  
+  | Step.lam p => Iff.mp lamRenFree (stepZFree p (Iff.mpr lamRenFree rf))
+  | Step.beta => _
+  | Step.eta zf => _
+    -- let M'zf := stepZFree p zf
+    -- let thing1 := stepZFree p (And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf)))
+    -- let thing2 := And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf))
+    -- let ⟨t, proof⟩ := stepZFree p (And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf)))
+    -- let ⟨t', proof'⟩ := And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf))
+    -- ⟨subLast t dummy, (by 
+    --   rw [<- renameSubstCommute]
+    --   rw [<- proof]
+    --   -- rfl
+    --   sorry
+    --   ) ⟩
+
+-- theorem parZFree {n1 n2} {M N : Term n2} (step : Par M N) {ren : Ren n1 n2}
+--   (rf : renFree ren M) : renFree ren N :=
+--   match step with
+--   | Par.var => rf
+--   | Par.app p1 p2 => Iff.mp appRenFree
+--     ⟨parZFree p1 (And.left (Iff.mpr appRenFree rf))
+--     , parZFree p2 (And.right (Iff.mpr appRenFree rf))⟩  
+--   | Par.lam p => Iff.mp lamRenFree (parZFree p (Iff.mpr lamRenFree rf))
+--   | Par.beta p1 p2 => _
+--   | Par.eta p zf =>
+--     let M'zf := parZFree p zf
+--     let thing1 := parZFree p (And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf)))
+--     let thing2 := And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf))
+--     let ⟨t, proof⟩ := parZFree p (And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf)))
+--     let ⟨t', proof'⟩ := And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf))
+--     ⟨subLast t dummy, (by 
+--       rw [<- renameSubstCommute]
+--       rw [<- proof]
+--       -- rfl
+--       sorry
+--       ) ⟩
 
 
 
@@ -627,15 +738,22 @@ theorem commutationProperty {Γ}
   | Par.app a1 b1, Step.app2 b2 =>
     let ⟨b, pb1, pb2⟩ := commutationProperty b1 b2
     ⟨app _ b, liftCsr (app _) Step.app2 pb1, Par.app a1 pb2⟩
-  | Par.beta a1 b1, Step.beta => _
-  | Par.beta a1 b1, Step.app2 b2 => _
+  | Par.beta a1 b1, Step.beta =>
+    ⟨_, closure.refl, subPar a1 b1⟩
+  | Par.beta a1 b1, Step.app2 b2 =>
+    let ⟨_, c, d⟩ := commutationProperty b1 b2
+    ⟨_, _, -- parToMultiStep (subPar parRefl _),
+      Par.beta a1 d⟩
   | Par.app (Par.lam a1) b1, Step.beta => _
   | Par.beta a1 b1, Step.app1 (Step.lam a2) => _
   | Par.app (Par.eta zf a1) b1, Step.beta => _
   | Par.beta a1 b1, Step.app1 (Step.eta zf) => _
   | Par.lam a1, Step.lam a2 =>
     let ⟨a, pa1, pa2⟩ := commutationProperty a1 a2
-    ⟨lam a, _, _⟩
+    ⟨lam a, liftCsr lam Step.lam pa1, Par.lam pa2⟩
   | Par.lam a1, Step.eta zf => _
   | Par.eta zf t1, Step.lam t2 => _
   | Par.eta zf a1, Step.eta zf2 => _
+
+-- TODO:
+-- https://drops.dagstuhl.de/opus/volltexte/2019/11406/pdf/LIPIcs-TYPES-2018-2.pdf

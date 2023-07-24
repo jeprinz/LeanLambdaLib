@@ -753,9 +753,9 @@ theorem betaEtaCommuteProperty {Γ}
     | Step.beta, StepEta.app1 p => _
     | Step.lam p, StepEta.eta zf => by
       cases p with
+      | app2 p' => cases p'
       | app1 p' => sorry
       | beta => sorry
-      | app2 p' => cases p'
 
 
 

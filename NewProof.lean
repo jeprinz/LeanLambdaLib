@@ -7,12 +7,16 @@
 --------------------------------------------------------------------------------
 
 
-open Nat
+-- open Nat
 open Fin
 open Option
 
-def Context : Type := Nat
--- def Var : Context → Type := Fin
+-- def Context : Type := Nat
+inductive Context : Type
+| zero : Context
+| succ : Context → Context 
+
+open Context
 
 inductive Var : Context → Type 
 | zero : ∀ {Γ}, Var (succ Γ)
@@ -90,8 +94,6 @@ def compose {n1 n2 n3} : Subst n1 n2 → Subst n2 n3 → Subst n1 n3 :=
 
 def renToSub {Γ Δ} : Ren Γ Δ → Subst Γ Δ :=
   fun ren => ids ∘ ren
-
-def bla : Nat → Nat := fun x => x 
 
 theorem subIdL {Γ Δ} {sub : Subst Γ Δ} : compose ids sub = sub :=
   by apply funext
@@ -194,10 +196,10 @@ theorem composeRename {n1} {M : Term n1}
 
 -- This is a helper used in commuteSubstRename, but seemingly lean has problems if I put its definition in there with the let tactic.
 -- It seems that lean can't simp by locally defined definitions?
-def ren' {ren : {Γ : Context} → Ren Γ (Nat.succ Γ)}
+def ren' {ren : {Γ : Context} → Ren Γ (Context.succ Γ)}
   : ∀{Γ}, Ren Γ (succ Γ) := fun {Γ} => match Γ with
-  | Nat.zero => fun y => False.rec (noVarZero y)
-  | Nat.succ _x' => ext ren
+  | Context.zero => fun y => False.rec (noVarZero y)
+  | Context.succ _x' => ext ren
 
 theorem commuteSubstRename {Γ} {M : Term Γ}
   : ∀ {Δ} {sub : Subst Γ Δ}
@@ -765,6 +767,18 @@ theorem stepZFree {n1 n2} {M N : Term n2} (step : Step M N) {ren : Ren n1 n2}
 theorem stepBackZFree {n1 n2} {M N : Term n2} (step : Step N M) {ren : Ren n1 n2}
   (rf : renFree ren M) : renFree ren N := by sorry
 
+theorem multiStepZFree {n1 n2} {M N : Term n2} (step : closure Step M N) {ren : Ren n1 n2}
+  (rf : renFree ren M) : renFree ren N := by sorry
+
+theorem multiStepBackZFree {n1 n2} {M N : Term n2} (step : closure Step N M) {ren : Ren n1 n2}
+  (rf : renFree ren M) : renFree ren N := by sorry
+
+theorem parZFree {n1 n2} {M N : Term n2} (step : Par M N) {ren : Ren n1 n2}
+  (rf : renFree ren M) : renFree ren N := by sorry
+
+theorem parBackZFree {n1 n2} {M N : Term n2} (step : Par N M) {ren : Ren n1 n2}
+  (rf : renFree ren M) : renFree ren N := by sorry
+
 -- theorem parZFree {n1 n2} {M N : Term n2} (step : Par M N) {ren : Ren n1 n2}
 --   (rf : renFree ren M) : renFree ren N :=
 --   match step with
@@ -820,12 +834,22 @@ theorem commutationProperty {Γ}
       apply b1
       apply zf
       ) b1⟩ -- requires zFree lemma
-  | Par.beta a1 b1, Step.app1 (Step.eta zf) => -- splits into two cases
-    by
-    cases a1 with
-    | app p var => exact (
-      ⟨_, _, Par.app (subPar p parRefl) parRefl⟩)
-    | beta p var => sorry
+  | Par.beta (Par.app a1 Par.var) b1, Step.app1 (Step.eta zf) => ⟨_,
+    -- (transitivity _ (liftCsr ()))
+    liftCsr (fun x => app x _) Step.app1 (by
+      have subLastDef {n} {t1 : Term (succ n)} {t2 : Term n} : subst (substZero t2) t1 = subLast t1 t2 := rfl
+      rw [subLastDef]
+      rw [subLastZFree (d2 := dummy)]
+      apply closure.refl
+      exact (parZFree a1 zf)
+    )
+    , Par.app (subPar a1 parRefl) b1⟩
+  | @Par.beta _ _ _ t2 t2' (@Par.beta _ t1 t1' _ _ a1 Par.var) b1, Step.app1 (Step.eta zf) =>
+    ⟨subLast (subLast t1' dummy) t2', _, Par.beta _ b1⟩
+    -- ⟨y, closure.refl, _⟩
+    -- ⟨_,
+    -- _,
+    -- Par.beta (substPar (fun {x} => parRefl) a1) b1⟩
   | Par.lam a1, Step.lam a2 =>
     let ⟨a, pa1, pa2⟩ := commutationProperty a1 a2
     ⟨lam a, liftCsr lam Step.lam pa1, Par.lam pa2⟩
@@ -840,84 +864,3 @@ theorem commutationProperty {Γ}
 theorem confluence1 {Γ}
   : square (closure (@Par Γ)) (closure (@Step Γ)) (closure (@Step Γ)) (closure (@Par Γ)) :=
     commutationLemma commutationProperty
-
-theorem commutationProperty3 {Γ}
-  : square (@Par Γ) (@Step Γ) (closure (@Step Γ)) (@Par Γ) :=
-  fun {x} {y} {z} p1 p2 =>
-  match p1, p2 with
-  | Par.app a1 b1, Step.app1 a2 =>
-    let ⟨a, pa1, pa2⟩ := commutationProperty a1 a2
-    ⟨app a _, liftCsr (fun x => app x _) Step.app1 pa1, Par.app pa2 b1⟩
-  | Par.app a1 b1, Step.app2 b2 =>
-    let ⟨b, pb1, pb2⟩ := commutationProperty b1 b2
-    ⟨app _ b, liftCsr (app _) Step.app2 pb1, Par.app a1 pb2⟩
-  | Par.beta a1 b1, Step.beta =>
-    ⟨_, closure.refl, subPar a1 b1⟩
-  | Par.beta a1 b1, Step.app2 b2 =>
-    let ⟨_, c, d⟩ := commutationProperty b1 b2
-    ⟨_, subMultiStep closure.refl c,
-      Par.beta a1 d⟩
-  | Par.app (Par.lam a1) b1, Step.beta =>
-    ⟨_, closure.cons Step.beta closure.refl, subPar a1 b1⟩ 
-  | Par.beta a1 b1, Step.app1 (Step.lam a2) =>
-    let ⟨_, c, d⟩ := commutationProperty a1 a2
-    ⟨_, subMultiStep c closure.refl, Par.beta d b1⟩
-  | Par.app (Par.eta a1 zf) b1, Step.beta =>
-    ⟨_, closure.refl, Par.app (by
-      rw [subLastZFree]
-      apply subPar
-      apply a1
-      apply b1
-      apply zf
-      ) b1⟩ -- requires zFree lemma
-  | Par.beta a1 b1, Step.app1 (Step.eta zf) => -- splits into two cases
-    match x, a1 with
-    | app (lam (app t1 (var Var.zero))) t2, (Par.app a1 Par.var) => _
-    | app (lam (app (lam t1) (var Var.zero))) t2, Par.beta a1 Par.var => _
-  | Par.lam a1, Step.lam a2 =>
-    let ⟨a, pa1, pa2⟩ := commutationProperty a1 a2
-    ⟨lam a, liftCsr lam Step.lam pa1, Par.lam pa2⟩
-  | Par.lam a, Step.eta zf => _ -- splits into two cases
-  | Par.eta zf t1, Step.lam t2 => _ -- splits into three cases on t2 (although one trivially is impossible)
-  | Par.eta a1 zf, Step.eta zf2 =>
-    ⟨_, closure.refl, subPar a1 parRefl⟩
-
--- theorem commutationProperty2 {Γ}
---   : square (@Par Γ) (@Step Γ) (closure (@Step Γ)) (@Par Γ) :=
---   fun {x} {y} {z} p1 p2 =>
---   match x, y, z, p1, p2 with
---   | app t1 t2, .(_), .(_), Par.app a1 b1, Step.app1 a2 =>
---     let ⟨a, pa1, pa2⟩ := commutationProperty a1 a2
---     ⟨app a _, liftCsr (fun x => app x _) Step.app1 pa1, Par.app pa2 b1⟩
---   | app t1 t2, .(_), .(_), Par.app a1 b1, Step.app2 b2 =>
---     let ⟨b, pb1, pb2⟩ := commutationProperty b1 b2
---     ⟨app _ b, liftCsr (app _) Step.app2 pb1, Par.app a1 pb2⟩
---   | app (lam t1) t2, .(_), .(_), Par.beta a1 b1, Step.beta =>
---     ⟨_, closure.refl, subPar a1 b1⟩
---   | app (lam t1) t2, .(_), .(_), Par.beta a1 b1, Step.app2 b2 =>
---     let ⟨_, c, d⟩ := commutationProperty b1 b2
---     ⟨_, subMultiStep closure.refl c,
---       Par.beta a1 d⟩
---   | app (lam t1) t2, .(_), .(_), Par.app (Par.lam a1) b1, Step.beta =>
---     ⟨_, closure.cons Step.beta closure.refl, subPar a1 b1⟩ 
---   | app (lam t1) t2, .(_), .(_), Par.beta a1 b1, Step.app1 (Step.lam a2) =>
---     let ⟨_, c, d⟩ := commutationProperty a1 a2
---     ⟨_, subMultiStep c closure.refl, Par.beta d b1⟩
---   | .(_), .(_), .(_), Par.app (Par.eta a1 zf) b1, Step.beta =>
---     ⟨_, closure.refl, Par.app (by
---       rw [subLastZFree]
---       apply subPar
---       apply a1
---       apply b1
---       apply zf
---       ) b1⟩ -- requires zFree lemma
---   -- | .(_), .(_), .(_), Par.beta a1 b1, Step.app1 (Step.eta zf) => _ -- splits into two cases
---   | app (lam (app t1 (var Var.zero))) t2, .(_), .(_), Par.beta (Par.app a1 Par.var) b1, Step.app1 (Step.eta zf) => _ -- splits into two cases
---   | app (lam (app (lam t1) (var Var.zero))) t2, .(_), .(_), Par.beta (Par.beta a1 Par.var) b1, Step.app1 (Step.eta zf) => _ -- splits into two cases
---   | .(_), .(_), .(_), Par.lam a1, Step.lam a2 =>
---     let ⟨a, pa1, pa2⟩ := commutationProperty a1 a2
---     ⟨lam a, liftCsr lam Step.lam pa1, Par.lam pa2⟩
---   | .(_), .(_), .(_), Par.lam a, Step.eta zf => _ -- splits into two cases
---   | .(_), .(_), .(_), Par.eta zf t1, Step.lam t2 => _ -- splits into three cases on t2 (although one trivially is impossible)
---   | .(_), .(_), .(_), Par.eta a1 zf, Step.eta zf2 =>
---     ⟨_, closure.refl, subPar a1 parRefl⟩

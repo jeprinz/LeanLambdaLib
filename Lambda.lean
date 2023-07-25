@@ -7,12 +7,13 @@
 --------------------------------------------------------------------------------
 
 
-open Nat
 open Fin
 open Option
 
-def Context : Type := Nat
--- def Var : Context → Type := Fin
+inductive Context : Type
+| zero : Context
+| succ : Context → Context 
+open Context
 
 inductive Var : Context → Type 
 | zero : ∀ {Γ}, Var (succ Γ)
@@ -125,7 +126,7 @@ def progress {Γ} (M : Term Γ)
 def eval {Γ} (fuel : Nat) (t1 : Term Γ)
   : Option (Σ t2, ((MultiStep t1 t2) × (Normal t2))) :=
   match fuel with
-  | zero => none
+  | Nat.zero => none
   | Nat.succ fuel' => match progress t1 with
     | Sum.inl ⟨t' , s⟩ => do 
         let ⟨final , steps , nf⟩ <- eval fuel' t'
@@ -287,10 +288,10 @@ theorem composeRename {n1} {M : Term n1}
 
 -- This is a helper used in commuteSubstRename, but seemingly lean has problems if I put its definition in there with the let tactic.
 -- It seems that lean can't simp by locally defined definitions?
-def ren' {ren : {Γ : Context} → Ren Γ (Nat.succ Γ)}
+def ren' {ren : {Γ : Context} → Ren Γ (Context.succ Γ)}
   : ∀{Γ}, Ren Γ (succ Γ) := fun {Γ} => match Γ with
-  | Nat.zero => fun y => False.rec (noVarZero y)
-  | Nat.succ _x' => ext ren
+  | Context.zero => fun y => False.rec (noVarZero y)
+  | Context.succ _x' => ext ren
 
 theorem commuteSubstRename {Γ} {M : Term Γ}
   : ∀ {Δ} {sub : Subst Γ Δ}
@@ -426,7 +427,7 @@ inductive Par : ∀{Γ}, Term Γ → Term Γ → Type
   Par N N' → Par M M' → Par (app (lam N) M) (subLast N' M')  
 
 def ParSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
-  {x : Var Γ} →Par (sub1 x) (sub2 x)
+  {x : Var Γ} → Par (sub1 x) (sub2 x)
 
 theorem parRename {Γ} {M M' : Term Γ}
   (p : Par M M') 
@@ -492,12 +493,7 @@ theorem parRefl {Γ} {M : Term Γ} : Par M M := by
   | app t1 t2 ih1 ih2 => apply Par.papp; apply ih1; apply ih2
   | lam t ih => apply Par.plam; apply ih
 
-inductive MultiPar : ∀{Γ}, Term Γ → Term Γ → Type
-| halt : {M : Term Γ} → MultiPar M M 
-| step : {L M N : Term Γ}
-  → Par L M → MultiPar M N → MultiPar L N
-
--- While on paper the Takahashi method leads to a cleaner proof, in a a theorem prover the proof
+-- While on paper the Takahashi method leads to a cleaner proof, in a theorem prover the proof
 -- will be ugly either way and this way is shorter.
 -- Also, using a takahashi function for beta-eta together seems to be very difficuly formally,
 -- since the eta rule involves a substiution
@@ -532,12 +528,6 @@ def Relation (A : Type) : Type 1 := A → A → Type
 inductive Proof (P : Prop) : Type
 | proof : P → Proof P
 
-inductive TypeInhabited (P : Type n) : Prop
-| elem : P → TypeInhabited P 
-
-inductive DownLevel (T : Type 1) : Type 0 -- Hmmmm
-| inhabited : Proof (TypeInhabited T) -> DownLevel T
-
 def closeRef {A} (R : Relation A) : Relation A :=
   fun x y => (Proof (x = y)) ⊕ R x y
 
@@ -548,21 +538,30 @@ def liftRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
   | Sum.inl (Proof.proof rfl) => Sum.inl (Proof.proof rfl)
   | Sum.inr s' => Sum.inr (ctr s')
 
-inductive closeTransRef {A} (R : Relation A) : A → A → Type
-| refl : ∀{a : A}, closeTransRef R a a
-| inject : ∀{x y : A}, R x y → closeTransRef R x y 
-| trans : ∀{x y z : A}, closeTransRef R x y → closeTransRef R y z → closeTransRef R x z  
+-- transitive relflexive closure of a relation
+inductive closure {A} (R : Relation A) : A → A → Type
+| refl : ∀{a : A}, closure R a a
+| cons : ∀{x y : A}, R x y → closure R y z  → closure R x z 
 
-def liftTransRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
+def oneStep {A} {R : Relation A} {x y : A} (step : R x y)
+  : closure R x y := closure.cons step closure.refl
+
+def transitivity {A} {R : Relation A} {x y z : A}
+  (step1 : closure R x y) (step2 : closure R y z)
+  : closure R x z :=
+  match step1 with
+  | closure.refl => step2
+  | closure.cons s ss => closure.cons s (transitivity ss step2)
+
+def liftCsr {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
   (ctr : ∀{x y}, R x y → R' (f x) (f y))
-  : closeTransRef R x y → closeTransRef R' (f x) (f y) :=
+  : closure R x y → closure R' (f x) (f y) :=
   fun s => match s with
-  | closeTransRef.refl => closeTransRef.refl
-  | closeTransRef.inject rxy => closeTransRef.inject (ctr rxy)
-  | closeTransRef.trans xy yz => closeTransRef.trans (liftTransRef f ctr xy) (liftTransRef f ctr yz)
+  | closure.refl => closure.refl
+  | closure.cons xy yz => closure.cons (ctr xy) (liftCsr f ctr yz)
 
-def square {A} (R S T U : Relation A) : Prop :=
-  {x y z : A} → R x y → S x z → ∃ u, TypeInhabited (T y u × U z u)
+def square {A} (R S T U : Relation A) : Type :=
+  {x y z : A} → R x y → S x z → Σ u, T y u × U z u
 
 --     x --R-- y
 --     |       |
@@ -594,9 +593,6 @@ inductive StepEta : ∀{Γ}, Term Γ → Term Γ → Type where
   zFree M
   → StepEta (lam (app M (var Var.zero))) (subLast M dummy)
 
-def EtaSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
-  {x : Var Γ} → StepEta (sub1 x) (sub2 x)
-
 theorem etaRename {Γ} {M M' : Term Γ}
   (p : StepEta M M') 
   : ∀{Δ}, {ren : Ren Γ Δ} → StepEta (rename ren M) (rename ren M') := by
@@ -626,6 +622,56 @@ theorem etaRename {Γ} {M M' : Term Γ}
     rw [<- lemma]
     apply eq'
 
+--------------
+
+def EtaSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
+  {x : Var Γ} → closure StepEta (sub1 x) (sub2 x)
+
+-- theorem parSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
+--   (ps : ParSubst sub1 sub2)
+--   : ParSubst (exts sub1) (exts sub2) := by
+--   intro x
+--   cases x
+--   . apply Par.pvar
+--   . apply parRename; apply ps
+
+-- theorem substPar {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ}
+--   (ps : ParSubst sub1 sub2) (p : Par M M')
+--   : Par (subst sub1 M) (subst sub2 M') :=
+--   match p with
+--   | Par.pvar => ps
+--   | Par.papp p1 p2 => Par.papp (substPar ps p1) (substPar ps p2)
+--   | Par.pbeta p1 p2 => by
+--     rw [<- substCommute]
+--     apply Par.pbeta
+--     apply substPar
+--     apply parSubstExts
+--     apply ps
+--     apply p1
+--     apply substPar
+--     apply ps
+--     apply p2
+--   | Par.plam p => by
+--     apply Par.plam
+--     apply substPar
+--     apply parSubstExts
+--     apply ps
+--     apply p
+
+-- def parSubstZero {Γ} {M M' : Term Γ}
+--   (p : Par M M') : ParSubst (substZero M) (substZero M')
+--   := fun {x} =>
+--     match x with
+--     | Var.zero => p
+--     | Var.succ _x' => Par.pvar
+
+theorem subEta {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
+  (p1 : closure StepEta N N') (p2 : closure StepEta M M')
+  : closure StepEta (subLast N M) (subLast N' M') :=
+  sorry
+  -- substPar (parSubstZero p2) p1
+---------------
+
 theorem lamRenFree {n2} {M : Term (succ n2)} {ren : Ren n1 n2}
   : renFree (ext ren) M ↔ renFree ren (lam M) :=
     Iff.intro
@@ -639,6 +685,28 @@ theorem appRenFree {n2} {M N : Term n2} {ren : Ren n1 n2}
       (fun ⟨app t1 t2, p⟩ =>
         ⟨⟨t1, by simp [rename] at p; apply (And.left p)⟩
         , ⟨t2, by simp [rename] at p; apply (And.right p)⟩⟩)
+
+theorem subLastZFree {n} {M : Term (succ n)} {d1 d2 : Term n}
+  (zf : zFree M)
+  : subLast M d1 = subLast M d2 := by
+  simp [zFree, renFree] at zf
+  apply Exists.elim; apply zf; intro t' eq
+  rw [<- eq]
+  have lemma {n} {a b : Term n} : subLast (rename Var.succ a) b = a := by
+      rw [renameSubstRen]
+      simp [subLast]
+      rw [substZConsIds]
+      rw [subSub]
+      have lemma' : compose (renToSub Var.succ) (cons b ids) = ids := by
+        apply funext
+        intro x
+        cases x
+        . rfl
+        . rfl
+      rw [lemma']
+      rw [subId]
+  rw [lemma]
+  rw [lemma]
 
 theorem stepEtaZFree {n1 n2} {M N : Term n2} (step : StepEta M N) {ren : Ren n1 n2}
   (rf : renFree ren M) : renFree ren N :=
@@ -657,6 +725,9 @@ theorem stepEtaZFree {n1 n2} {M N : Term n2} (step : StepEta M N) {ren : Ren n1 
       rw [p]
       rfl
       ) ⟩
+
+theorem stepZFree {n1 n2} {M N : Term n2} (step : Step M N) {ren : Ren n1 n2}
+  (rf : renFree ren M) : renFree ren N := by sorry
 
 
 -- TODO: I think that this version doesn't hold for single step eta
@@ -699,6 +770,10 @@ theorem substEta {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
     . rfl
     . rfl
 
+theorem substStep {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
+  (p : Step M M')
+  : closeRef Step (subst sub M) (subst sub M') := by sorry
+
 def rfStepEta {Γ} := closeRef (@StepEta Γ)
 
 theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
@@ -728,48 +803,49 @@ theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
 --   : Σ t', StepEta t1 t' × StepEta t2 t' :=
 
 theorem betaEtaCommuteProperty {Γ}
-  : square (@Step Γ) (@StepEta Γ) (closeTransRef (@StepEta Γ)) (closeRef (@Step Γ)) :=
+  : square (@Step Γ) (@StepEta Γ) (closure (@StepEta Γ)) (closeRef (@Step Γ)) :=
     fun {t} {tLeft} {tRight} p1 p2 =>
     match p1, p2 with
     | Step.app1 p1, StepEta.app1 p2 =>
-      let ⟨t', TypeInhabited.elem ⟨q1, q2⟩⟩ := betaEtaCommuteProperty p1 p2 
-      ⟨_, TypeInhabited.elem ⟨liftTransRef (fun x => app x _) StepEta.app1 q1,
-        liftRef (fun x => app x _) Step.app1 q2⟩⟩ 
+      let ⟨t', q1, q2⟩ := betaEtaCommuteProperty p1 p2 
+      ⟨_, liftCsr (fun x => app x _) StepEta.app1 q1,
+        liftRef (fun x => app x _) Step.app1 q2⟩ 
     | Step.app2 p1, StepEta.app2 p2 =>
-      let ⟨t', TypeInhabited.elem ⟨q1, q2⟩⟩ := betaEtaCommuteProperty p1 p2 
-      ⟨_, TypeInhabited.elem ⟨liftTransRef (app _) StepEta.app2 q1,
-        liftRef (app _) Step.app2 q2⟩⟩ 
+      let ⟨t', q1, q2⟩ := betaEtaCommuteProperty p1 p2 
+      ⟨_, liftCsr (app _) StepEta.app2 q1,
+        liftRef (app _) Step.app2 q2⟩
     | Step.lam p1, StepEta.lam p2 =>
-      let ⟨t', TypeInhabited.elem ⟨q1, q2⟩⟩ := betaEtaCommuteProperty p1 p2 
-      ⟨_, TypeInhabited.elem ⟨liftTransRef lam StepEta.lam q1,
-        liftRef lam Step.lam q2⟩⟩ 
+      let ⟨t', q1, q2⟩ := betaEtaCommuteProperty p1 p2 
+      ⟨_, liftCsr lam StepEta.lam q1,
+        liftRef lam Step.lam q2⟩ 
     | Step.app1 p1, StepEta.app2 p2 =>
-      ⟨_, TypeInhabited.elem ⟨closeTransRef.inject (StepEta.app2 p2),
-        Sum.inr (Step.app1 p1)⟩⟩
+      ⟨_, oneStep (StepEta.app2 p2),
+        Sum.inr (Step.app1 p1)⟩
     | Step.app2 p1, StepEta.app1 p2 => -- REPEATED CASE
-      ⟨_, TypeInhabited.elem ⟨closeTransRef.inject (StepEta.app1 p2)
-          , Sum.inr (Step.app2 p1)⟩⟩
-    | Step.beta, StepEta.app2 p => _
-    | Step.beta, StepEta.app1 p => _
-    | Step.lam p, StepEta.eta zf => by
-      cases p with
-      | app2 p' => cases p'
-      | app1 p' => sorry
-      | beta => sorry
-
-
-
-
-    -- fun {t} {tLeft} {tRight} p1 p2 =>
-    -- match t, p1, p2 with
-    -- | .(_), Step.app1 p1, StepEta.app1 p2 => _
-    -- | .(_), Step.app2 p1, StepEta.app2 p2 => _
-    -- | .(_), Step.lam p1, StepEta.lam p2 => _
-    -- -- | (lam .(app _ _)), Step.lam p, StepEta.eta zf => _
-    -- | .(_), Step.lam Step.beta, StepEta.eta zf => _
-    -- | .(_), Step.lam (Step.app1 p), StepEta.eta zf => _
-    -- -- -- | Step.lam (Step.app2 p), StepEta.eta zf => _
-    -- | .(_), Step.beta, StepEta.app1 p => _
-    -- | .(_), Step.beta, StepEta.app2 p => _
-    -- | .(_), Step.app1 p1, StepEta.app2 p2 => _
-    -- | .(_), Step.app2 p1, StepEta.app1 p2 => _ -- REPEATED CASE
+      ⟨_, oneStep (StepEta.app1 p2)
+          , Sum.inr (Step.app2 p1)⟩
+    | Step.beta, StepEta.app2 p => ⟨_, subEta closure.refl (oneStep p), Sum.inr Step.beta⟩
+    | Step.beta, StepEta.app1 (StepEta.lam p) => ⟨_, subEta (oneStep p) closure.refl, Sum.inr Step.beta⟩
+    | Step.beta, StepEta.app1 (StepEta.eta zf) => ⟨_, closure.refl, (by
+        rw [subLastZFree (d1 := dummy)]
+        apply Sum.inl (Proof.proof rfl)
+        apply zf
+        )⟩
+    | Step.lam (Step.app1 p), StepEta.eta zf => ⟨_, oneStep (StepEta.eta (stepZFree p zf)), substStep p⟩
+    | Step.lam Step.beta, @StepEta.eta _ (lam a) zf =>
+      ⟨_, closure.refl, Sum.inl (Proof.proof (by
+        --
+        apply Exists.elim; apply (Iff.mpr lamRenFree zf); intro t proof
+        -- rw [<- proof]
+        simp [subLast, subst]
+        rw [<- proof]
+        rw [renameSubst]
+        rw [renameSubst]
+        apply congrArg (fun sub => subst sub _)
+        apply funext
+        intro x
+        exact (match x with
+        | Var.zero => rfl
+        | Var.succ Var.zero => rfl
+        | Var.succ (Var.succ x') => rfl
+        )))⟩

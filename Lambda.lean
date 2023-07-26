@@ -725,50 +725,72 @@ theorem etaRename {Γ} {M M' : Term Γ}
 def EtaSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
   {x : Var Γ} → closure StepEta (sub1 x) (sub2 x)
 
--- theorem parSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
---   (ps : ParSubst sub1 sub2)
---   : ParSubst (exts sub1) (exts sub2) := by
---   intro x
---   cases x
---   . apply Par.pvar
---   . apply parRename; apply ps
+theorem closureEtaRename {Γ} {M M' : Term Γ}
+  (p : closure StepEta M M') 
+  : ∀{Δ}, {ren : Ren Γ Δ} → closure StepEta (rename ren M) (rename ren M') :=
+  match p with
+  | closure.refl => closure.refl
+  | closure.cons s ss => closure.cons (etaRename s) (closureEtaRename ss)
 
--- theorem substPar {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ}
---   (ps : ParSubst sub1 sub2) (p : Par M M')
---   : Par (subst sub1 M) (subst sub2 M') :=
---   match p with
---   | Par.pvar => ps
---   | Par.papp p1 p2 => Par.papp (substPar ps p1) (substPar ps p2)
---   | Par.pbeta p1 p2 => by
---     rw [<- substCommute]
---     apply Par.pbeta
---     apply substPar
---     apply parSubstExts
---     apply ps
---     apply p1
---     apply substPar
---     apply ps
---     apply p2
---   | Par.plam p => by
---     apply Par.plam
---     apply substPar
---     apply parSubstExts
---     apply ps
---     apply p
+theorem etaSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
+  (ps : EtaSubst sub1 sub2)
+  : EtaSubst (exts sub1) (exts sub2) := by
+  intro x
+  cases x
+  . apply closure.refl
+  . apply closureEtaRename; apply ps
 
--- def parSubstZero {Γ} {M M' : Term Γ}
---   (p : Par M M') : ParSubst (substZero M) (substZero M')
---   := fun {x} =>
---     match x with
---     | Var.zero => p
---     | Var.succ _x' => Par.pvar
+theorem substEta {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
+  (p : StepEta M M')
+  : StepEta (subst sub M) (subst sub M') :=
+  match p with
+  | StepEta.app1 p => StepEta.app1 (substEta p)
+  | StepEta.app2 p => StepEta.app2 (substEta p)
+  | StepEta.lam p => StepEta.lam (substEta p)
+  | @StepEta.eta _ M zf => by
+    simp [subst]
+    simp [subLast]
+    rw [subSub]
+    rw [<- substZeroSub]
+    rw [<- subSub]
+    apply StepEta.eta
+    simp [zFree, renFree] at *
+    apply Exists.elim; apply zf; intro t' eq
+    exists (subst sub t')
+    have eq' : subst (exts sub) (rename (Var.succ) t') = subst (exts sub) M := by
+      apply congrArg
+      apply eq
+    rw [<- commuteSubstRename]
+    apply eq'
+    intro x
+    cases x
+    . rfl
+    . rfl
+
+theorem substEta1 {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M : Term Γ}
+  (es : EtaSubst sub1 sub2)
+  : closure StepEta (subst sub1 M) (subst sub2 M) :=
+  match M with
+  | var i => @es i
+  | app _t1 _t2 =>
+    transitivity
+      (liftCsr (fun x => app x _) StepEta.app1 (substEta1 es))
+      (liftCsr (app _) StepEta.app2 (substEta1 es))
+  | lam _t => liftCsr lam StepEta.lam (substEta1 (etaSubstExts es))
+
+def etaSubstZero {Γ} {M M' : Term Γ}
+  (p : closure StepEta M M') : EtaSubst (substZero M) (substZero M')
+  := fun {x} =>
+    match x with
+    | Var.zero => p
+    | Var.succ _x' => closure.refl
 
 theorem subEta {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
   (p1 : closure StepEta N N') (p2 : closure StepEta M M')
   : closure StepEta (subLast N M) (subLast N' M') :=
-  sorry
-  -- substPar (parSubstZero p2) p1
----------------
+  match p1 with
+  | closure.refl => substEta1 (etaSubstZero p2)
+  | closure.cons s ss => closure.cons (substEta s) (subEta ss p2)
 
 theorem lamRenFree {n2} {M : Term (succ n2)} {ren : Ren n1 n2}
   : renFree (ext ren) M ↔ renFree ren (lam M) :=
@@ -825,54 +847,41 @@ theorem stepEtaZFree {n1 n2} {M N : Term n2} (step : StepEta M N) {ren : Ren n1 
       ) ⟩
 
 theorem stepZFree {n1 n2} {M N : Term n2} (step : Step M N) {ren : Ren n1 n2}
-  (rf : renFree ren M) : renFree ren N := by sorry
-
-
--- TODO: I think that this version doesn't hold for single step eta
--- theorem substEta {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ}
---   (ps : EtaSubst sub1 sub2) (p : StepEta M M')
---   : StepEta (subst sub1 M) (subst sub2 M') :=
---   match p with
---   | StepEta.app1 p => by
---     simp [subst]
---     apply StepEta.app1
---     --
---   | StepEta.app2 p => _
---   | StepEta.eta p => _
---   | StepEta.lam p => _
-
-theorem substEta {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
-  (p : StepEta M M')
-  : StepEta (subst sub M) (subst sub M') :=
-  match p with
-  | StepEta.app1 p => StepEta.app1 (substEta p)
-  | StepEta.app2 p => StepEta.app2 (substEta p)
-  | StepEta.lam p => StepEta.lam (substEta p)
-  | @StepEta.eta _ M zf => by
-    simp [subst]
-    simp [subLast]
-    rw [subSub]
-    rw [<- substZeroSub]
-    rw [<- subSub]
-    apply StepEta.eta
-    simp [zFree, renFree] at *
-    apply Exists.elim; apply zf; intro t' eq
-    exists (subst sub t')
-    have eq' : subst (exts sub) (rename (Var.succ) t') = subst (exts sub) M := by
-      apply congrArg
-      apply eq
-    rw [<- commuteSubstRename]
-    apply eq'
-    intro x
-    cases x
-    . rfl
-    . rfl
+  (rf : renFree ren M) : renFree ren N :=
+  match step with
+  | Step.app1 p => Iff.mp appRenFree
+    ⟨stepZFree p (And.left (Iff.mpr appRenFree rf))
+    , (And.right (Iff.mpr appRenFree rf))⟩  
+  | Step.app2 p => Iff.mp appRenFree
+    ⟨(And.left (Iff.mpr appRenFree rf))
+    , stepZFree p (And.right (Iff.mpr appRenFree rf))⟩  
+  | Step.lam p => Iff.mp lamRenFree (stepZFree p (Iff.mpr lamRenFree rf))
+  | Step.beta =>
+    let ⟨rflamn, rfm⟩ := Iff.mpr appRenFree rf
+    let rfn := Iff.mpr lamRenFree rflamn
+    let ⟨m, proofm⟩ := rfm
+    let ⟨n, proofn⟩ := rfn
+    by
+      --
+      simp [renFree]
+      exists (subLast n m)
+      rw [<- proofm]
+      rw [<- proofn]
+      rw [renameSubstCommute]
 
 theorem substStep {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
-  (p : Step M M')
-  : closeRef Step (subst sub M) (subst sub M') := by sorry
+  (step : Step M M')
+  : Step (subst sub M) (subst sub M') :=
+  match step with
+  | Step.app1 p => Step.app1 (substStep p)
+  | Step.app2 p => Step.app2 (substStep p)
+  | Step.lam p => Step.lam (substStep p)
+  | Step.beta => by
+    simp [subst]
+    rw [<- substCommute]
+    apply Step.beta
 
-def rfStepEta {Γ} := closeRef (@StepEta Γ)
+-- def rfStepEta {Γ} := closeRef (@StepEta Γ)
 
 theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
   (closeRef (@StepEta Γ)) (closeRef (@StepEta Γ)) :=
@@ -929,7 +938,7 @@ theorem betaEtaCommuteProperty {Γ}
         apply Sum.inl (Proof.proof rfl)
         apply zf
         )⟩
-    | Step.lam (Step.app1 p), StepEta.eta zf => ⟨_, oneStep (StepEta.eta (stepZFree p zf)), substStep p⟩
+    | Step.lam (Step.app1 p), StepEta.eta zf => ⟨_, oneStep (StepEta.eta (stepZFree p zf)), Sum.inr (substStep p)⟩
     | Step.lam Step.beta, @StepEta.eta _ (lam a) zf =>
       ⟨_, closure.refl, Sum.inl (Proof.proof (by
         --

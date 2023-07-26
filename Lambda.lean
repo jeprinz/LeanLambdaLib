@@ -560,8 +560,41 @@ def liftCsr {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
   | closure.refl => closure.refl
   | closure.cons xy yz => closure.cons (ctr xy) (liftCsr f ctr yz)
 
+inductive union {A} (R S : Relation A) : A → A → Type  
+| r : ∀{x y}, R x y → union R S x y 
+| s : ∀{x y}, S x y → union R S x y
+
+def leftClosureUnion {A x y} {R S : Relation A}
+  (r : closure R x y) : closure (union R S) x y :=
+  match r with
+  | closure.refl => closure.refl
+  | closure.cons s ss => closure.cons (union.r s) (leftClosureUnion ss)
+
+def rightClosureUnion {A x y} {R S : Relation A}
+  (s : closure S x y) : closure (union R S) x y :=
+  match s with
+  | closure.refl => closure.refl
+  | closure.cons s ss => closure.cons (union.s s) (rightClosureUnion ss)
+
+def oneUnionStep {A x y} {R S : Relation A}
+  (s : union R S x y) : union (closure R) (closure S) x y :=
+  match s with
+  | union.r r => union.r (oneStep r)
+  | union.s s => union.s (oneStep s)
+
+def unionClosureToClosureUnion {A x y} {R S : Relation A}
+  (s : union (closure R) (closure S) x y) : closure (union R S) x y :=
+  match s with
+  | union.r r => leftClosureUnion r
+  | union.s s => rightClosureUnion s
+
+-- All from Nipkow paper
 def square {A} (R S T U : Relation A) : Type :=
   {x y z : A} → R x y → S x z → Σ u, T y u × U z u
+
+def commute {A} (R S : Relation A) : Type := square R S S R
+def diamond {A} (R : Relation A) : Type := commute R R
+def confluent {A} (R : Relation A) : Type := diamond (closure R)
 
 --     x --R-- y
 --     |       |
@@ -569,8 +602,73 @@ def square {A} (R S T U : Relation A) : Type :=
 --     |       |
 --     z --U-- u
 
+theorem stripLemma {A} {R S : Relation A}
+  (sq : square R S (closure S) (closeRef R))
+  : square R (closure S) (closure S) (closure R) :=
+  fun {_x} {y} {z} Rxy Sxz => 
+  match Sxz with
+  | closure.refl => ⟨y, closure.refl, oneStep Rxy⟩ 
+  | closure.cons xx' x'z =>
+    let ⟨out, s, r⟩ := sq Rxy xx'
+    match r with
+    | Sum.inl (Proof.proof p) =>
+      ⟨z, transitivity s (by rw [<- p]; exact x'z), closure.refl⟩ 
+    | Sum.inr r' =>
+      let ⟨out2, s2, r2⟩ := stripLemma sq r' x'z
+      ⟨out2, transitivity s s2, r2⟩
 
-------- Eta
+theorem commutationLemma {A} {R S : Relation A}
+  (sq : square R S (closure S) (closeRef R))
+  : square (closure R) (closure S) (closure S) (closure R) :=
+  fun {_x} {y} {z} Rxy Sxz => 
+  match Rxy with
+  | closure.refl => ⟨z, Sxz, closure.refl⟩
+  | closure.cons xx' x'z =>
+    let ⟨_out, s, r⟩ := stripLemma sq xx' Sxz
+    let ⟨out2, s2, r2⟩ := commutationLemma sq x'z s
+    ⟨out2, s2, transitivity r r2⟩ 
+
+theorem commutativeUnion {A} {R S : Relation A}
+  (rConfluent : confluent R) (sConfluent : confluent S)
+  (commutes : commute (closure R) (closure S)) : confluent (union R S) :=
+  fun {x} {y} {z} =>
+  let rec commutativeUnionLemma
+    : square (union (closure R) (closure S)) (closure (union R S))
+      (closure (union R S)) (union (closure R) (closure S)) :=
+    fun {x} {y} {z} top left =>
+      match left with
+      | closure.refl => ⟨y, closure.refl, top⟩
+      | closure.cons s ss =>
+        match s, top with
+        | union.r left', union.r top' =>
+          let ⟨w', right', top''⟩ := rConfluent top' (oneStep left')
+          let ⟨w, right, bottom⟩ := commutativeUnionLemma (union.r top'') ss
+          ⟨w, transitivity (leftClosureUnion right') right, bottom⟩
+        | union.r left', union.s top' =>
+          let ⟨w', top'', right'⟩ := commutes (oneStep left') top'
+          let ⟨w, right, bottom⟩ := commutativeUnionLemma (union.s top'') ss
+          ⟨w, transitivity (leftClosureUnion right') right, bottom⟩
+        | union.s left', union.r top' =>
+          let ⟨w', right', top''⟩ := commutes top' (oneStep left')
+          let ⟨w, right, bottom⟩ := commutativeUnionLemma (union.r top'') ss
+          ⟨w, transitivity (rightClosureUnion right') right, bottom⟩
+        | union.s left', union.s top' =>
+          let ⟨w', right', top''⟩ := sConfluent top' (oneStep left')
+          let ⟨w, right, bottom⟩ := commutativeUnionLemma (union.s top'') ss
+          ⟨w, transitivity (rightClosureUnion right') right, bottom⟩
+    by
+      intro top
+      revert z
+      induction top with
+      | refl => intro z left; exact ⟨_, left, closure.refl⟩
+      | cons s _ss ih =>
+        intro z left
+        let ⟨_, right', bottom'⟩ := commutativeUnionLemma (oneUnionStep s) left 
+        let ⟨out2, right, bottom⟩ := ih right'
+        exact ⟨out2, right, transitivity (unionClosureToClosureUnion bottom') bottom⟩ 
+
+
+------- Eta ----------------------------------------------------------------------------------------------
 
 def dummy : ∀{Γ}, Term Γ := lam (var Var.zero)
 

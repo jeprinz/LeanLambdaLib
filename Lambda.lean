@@ -522,6 +522,8 @@ theorem parDiamond {Γ} {t t1 t2 : Term Γ}
     let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
     ⟨lam a, Par.plam pa1, Par.plam pa2⟩
 
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -------- Relations - from Nipkow (2001)
 def Relation (A : Type) : Type 1 := A → A → Type
 
@@ -956,3 +958,77 @@ theorem betaEtaCommuteProperty {Γ}
         | Var.succ Var.zero => rfl
         | Var.succ (Var.succ x') => rfl
         )))⟩
+
+--------------------------------------------------------------------------------
+---------- Equivalence between Par and Step ------------------------------------
+--------------------------------------------------------------------------------
+
+theorem stepToPar {Γ} {t1 t2 : Term Γ}
+  (step : Step t1 t2) : Par t1 t2 :=
+  match step with
+  | Step.app1 s => Par.papp (stepToPar s) parRefl
+  | Step.app2 s => Par.papp parRefl (stepToPar s)
+  | Step.lam s => Par.plam (stepToPar s)
+  | Step.beta => Par.pbeta parRefl parRefl
+
+theorem parToMultiStep {Γ} {t1 t2 : Term Γ}
+  (par : Par t1 t2) : closure Step t1 t2 :=
+  match par with 
+  | Par.pvar => closure.refl
+  | Par.papp p1 p2 => transitivity (liftCsr (fun x => app x _) Step.app1 (parToMultiStep p1))
+    (liftCsr (app _) Step.app2 (parToMultiStep p2))
+  | Par.plam s => liftCsr lam Step.lam (parToMultiStep s)
+  | Par.pbeta s1 s2 => -- Can I do this case without proving substitution properties of MultiStep?
+    transitivity (transitivity
+      (liftCsr (fun x => app (lam x) _) (Step.app1 ∘ Step.lam) (parToMultiStep s1))
+      (liftCsr (app _) Step.app2 (parToMultiStep s2)))
+      (oneStep Step.beta)
+
+theorem multiParToMultiStep {Γ} {t1 t2 : Term Γ}
+  (par : closure Par t1 t2) : closure Step t1 t2 :=
+  match par with
+  | closure.refl => closure.refl
+  | closure.cons s ss => transitivity (parToMultiStep s) (multiParToMultiStep ss)
+
+theorem multiStepToMultiPar {Γ} {t1 t2 : Term Γ}
+  (par : closure Step t1 t2) : closure Par t1 t2 :=
+  match par with
+  | closure.refl => closure.refl
+  | closure.cons s ss => closure.cons (stepToPar s) (multiStepToMultiPar ss)
+
+--------------------------------------------------------------------------------
+---------- Collecting all of the theorems together into confluence -------------
+--------------------------------------------------------------------------------
+
+theorem diamondToProperty {A} {R : Relation A}
+  (d : diamond R)
+  : square R R (closure R) (closeRef R) :=
+  fun s1 s2 =>
+    let ⟨_, s2', s1'⟩ := d s1 s2
+    ⟨_, oneStep s2', Sum.inr s1'⟩ 
+theorem parConfluent {Γ} : confluent (@Par Γ) :=
+  commutationLemma (diamondToProperty parDiamond)
+theorem stepConfluent {Γ} : confluent (@Step Γ) :=
+  fun s1 s2 =>
+    let ⟨_, s2', s1'⟩ := parConfluent (multiStepToMultiPar s1) (multiStepToMultiPar s2)
+    ⟨_, multiParToMultiStep s2', multiParToMultiStep s1'⟩
+
+theorem closeRefToClosure {A} {R : Relation A}
+  {x y}
+  (r : closeRef R x y) : closure R x y :=
+  match r with
+  | Sum.inl (Proof.proof rfl) => closure.refl
+  | Sum.inr r => oneStep r
+
+theorem propertyToProperty {A} {R : Relation A}
+  (sq : square R R (closeRef R) (closeRef R))
+  : square R R (closure R) (closeRef R) :=
+  fun s1 s2 =>
+    let ⟨_, s2', s1'⟩ := sq s1 s2
+    ⟨_, closeRefToClosure s2', s1'⟩ 
+
+theorem etaConfluent {Γ} : confluent (@StepEta Γ) :=
+  commutationLemma (propertyToProperty etaProperty)
+
+theorem confluence {Γ} : confluent (union (@Step Γ) StepEta) :=
+  commutativeUnion stepConfluent etaConfluent (commutationLemma betaEtaCommuteProperty)

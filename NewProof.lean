@@ -736,9 +736,9 @@ theorem subLastZFree {n} {M : Term (succ n)} {d1 d2 : Term n}
 -- def subRenFree {Γ1 Γ Γ2} (ren : Ren Γ Γ2) (sub : Subst Γ1 Γ2) : Prop :=
 --   (x : Var Γ1) → renFree ren (sub x) 
 
-theorem substRenFree {Γ1 Γ Γ2} (ren : Ren Γ Γ1) (sub : Subst Γ1 Γ2)
-  (srf : subRenFree ren sub) (M : Term Γ1)
-  : renFree ren M → renFree ren (subst sub M) := by sorry
+-- theorem substRenFree {Γ1 Γ Γ2} (ren : Ren Γ Γ1) (sub : Subst Γ1 Γ2)
+--   (srf : subRenFree ren sub) (M : Term Γ1)
+--   : renFree ren M → renFree ren (subst sub M) := by sorry
 
 theorem stepZFree {n1 n2} {M N : Term n2} (step : Step M N) {ren : Ren n1 n2}
   (rf : renFree ren M) : renFree ren N :=

@@ -96,9 +96,6 @@ inductive Step : ∀{Γ}, Term Γ → Term Γ → Type where
 | lam : ∀ {Γ} {N N' : Term (succ Γ)},
     Step N N' → Step (lam N) (lam N')
 
--- | eta : ∀{Γ} {N : Term Γ},
---     Step (lam (app (rename Var.succ N) (var Var.zero))) N
-
 -- infix:50 " ==> " => Step
 
 inductive MultiStep : ∀ {Γ}, Term Γ → Term Γ → Type
@@ -566,6 +563,14 @@ inductive union {A} (R S : Relation A) : A → A → Type
 | r : ∀{x y}, R x y → union R S x y 
 | s : ∀{x y}, S x y → union R S x y
 
+def liftUnion {A} {B} {R S : Relation A} {R' S' : Relation B} {x y : A} (f : A → B)
+  (ctr1 : ∀{x y}, R x y → R' (f x) (f y))
+  (ctr2 : ∀{x y}, S x y → S' (f x) (f y))
+  : union R S x y → union R' S' (f x) (f y) :=
+  fun s => match s with
+  | union.r r => union.r (ctr1 r)
+  | union.s s => union.s (ctr2 s)
+
 def leftClosureUnion {A x y} {R S : Relation A}
   (r : closure R x y) : closure (union R S) x y :=
   match r with
@@ -1030,5 +1035,302 @@ theorem propertyToProperty {A} {R : Relation A}
 theorem etaConfluent {Γ} : confluent (@StepEta Γ) :=
   commutationLemma (propertyToProperty etaProperty)
 
-theorem confluence {Γ} : confluent (union (@Step Γ) StepEta) :=
+def AllStep {Γ} : Relation (Term Γ) := closure (union Step StepEta)
+
+theorem allStepConfluence {Γ} : confluent (union (@Step Γ) StepEta) :=
   commutativeUnion stepConfluent etaConfluent (commutationLemma betaEtaCommuteProperty)
+
+theorem substUnion1 {n1 n2} {t1 t2 : Term n1} {sub : Subst n1 n2}
+  (rt : AllStep t1 t2)
+  : AllStep (subst sub t1) (subst sub t2) :=
+  match rt with
+  | closure.refl => closure.refl
+  | closure.cons s ss => match s with
+    | union.r beta => closure.cons (union.r (substStep beta)) (substUnion1 ss)
+    | union.s eta => closure.cons (union.s (substEta eta)) (substUnion1 ss)
+
+theorem substUnion2 {n1 n2} {t : Term n1} {sub1 sub2 : Subst n1 n2}
+  (rsub : (x : Var n1) → AllStep (sub1 x) (sub2 x))
+  : AllStep (subst sub1 t) (subst sub2 t) :=
+  match t with
+  | var i => _
+  | app t1 t2 => _
+  | lam t =>
+    _
+
+theorem substUnion {n1 n2} {t1 t2 : Term n1} {sub1 sub2 : Subst n1 n2}
+  (rt : AllStep t1 t2) (rsub : (x : Var n1) → AllStep (sub1 x) (sub2 x))
+  : AllStep (subst sub1 t1) (subst sub2 t2) :=
+  _
+
+--------------------------------------------------------------------------------
+---------- Making a nicer step relation with a cleaner definition --------------
+--------------------------------------------------------------------------------
+
+theorem AllStepZFree {n1 n2} {a b : Term n2}
+  {ren : Ren n1 n2}
+  (r : AllStep a b) (zf : renFree ren a) : renFree ren b :=
+  match r with
+  | closure.refl => zf
+  | closure.cons s ss => match s with
+    | union.r r => AllStepZFree ss (stepZFree r zf)
+    | union.s s => AllStepZFree ss (stepEtaZFree s zf)
+
+inductive Reduces : ∀{Γ}, Term Γ → Term Γ → Prop   
+| lam : ∀{Γ} {N N' : Term (succ Γ)},
+  Reduces N N' → Reduces (lam N) (lam N')  
+| app : ∀{Γ}{L L' M M' : Term Γ},
+  Reduces L L' → Reduces M M' → Reduces (app L M) (app L' M')   
+| beta : ∀{Γ}{N N' : Term (succ Γ)} {M M' : Term Γ},
+  Reduces N N' → Reduces M M' → Reduces (app (lam N) M) (subLast N' M')  
+| trans : ∀{Γ} {a b c : Term Γ},
+  Reduces a b → Reduces b c → Reduces a c   
+| refl : ∀{Γ} {M : Term Γ}, Reduces M M
+| eta : ∀{Γ} {M M' : Term (succ Γ)},
+  zFree M
+  → Reduces M M' 
+  → Reduces (lam (app M (var Var.zero))) (subLast M' dummy)
+
+theorem unionToReduces {Γ} {a b : Term Γ}
+  (steps : AllStep a b) : Reduces a b :=
+  let rec stepToReduces {Γ} {a b : Term Γ}
+  (step : union Step StepEta a b) : Reduces a b :=
+    match step with
+    | union.r beta => match beta with
+      | Step.app1 s => Reduces.app (stepToReduces (union.r s)) Reduces.refl
+      | Step.app2 s => Reduces.app Reduces.refl (stepToReduces (union.r s))
+      | Step.lam s => Reduces.lam (stepToReduces (union.r s))
+      | Step.beta => Reduces.beta Reduces.refl Reduces.refl
+    | union.s eta => match eta with
+      | StepEta.app1 s => Reduces.app (stepToReduces (union.s s)) Reduces.refl
+      | StepEta.app2 s => Reduces.app Reduces.refl (stepToReduces (union.s s))
+      | StepEta.lam s => Reduces.lam (stepToReduces (union.s s))
+      | StepEta.eta zf => Reduces.eta zf Reduces.refl
+  match steps with
+  | closure.refl => Reduces.refl
+  | closure.cons s ss => Reduces.trans (stepToReduces s) (unionToReduces ss)
+
+inductive TypeInhabited (P : Type n) : Prop
+| elem : P → TypeInhabited P 
+
+open TypeInhabited
+
+def TIbind {A B : Type n} :
+  TypeInhabited A → (A → TypeInhabited B) → TypeInhabited B :=
+  fun (elem a) f => f a
+
+theorem reducesToUnion {Γ} {a b : Term Γ}
+  (s : Reduces a b) : TypeInhabited (AllStep a b) := by
+  induction s with
+  | lam _r ih => exact (TIbind ih fun a =>
+    elem (liftCsr lam (liftUnion lam Step.lam StepEta.lam) a))
+  | app _r1 _r2 ih1 ih2 => exact (
+    TIbind ih1 fun a =>
+    TIbind ih2 fun b =>
+    elem (
+      transitivity (liftCsr (fun x => app x _) (liftUnion (fun x => app x _) Step.app1 StepEta.app1) a)
+      (liftCsr (app _) (liftUnion (app _) Step.app2 StepEta.app2) b)))
+  | beta _r1 _r2 ih1 ih2 => exact (
+    TIbind ih1 fun a =>
+    TIbind ih2 fun b =>
+    elem (
+      transitivity (liftCsr (fun x => app (lam x) _) (liftUnion _ (Step.app1 ∘ Step.lam) (StepEta.app1 ∘ StepEta.lam)) a)
+      (transitivity (liftCsr (app _) (liftUnion (app _) Step.app2 StepEta.app2) b)
+        (oneStep (union.r Step.beta))
+      )))
+  | eta zf _r ih => exact (TIbind ih fun a =>
+    elem (transitivity
+      (liftCsr (fun x => lam (app x _)) (liftUnion (fun x => lam (app x _)) (Step.lam ∘ Step.app1) (StepEta.lam ∘ StepEta.app1)) a)
+      (oneStep (union.s (StepEta.eta (AllStepZFree a zf))))))
+  | refl => exact (elem closure.refl)
+  | trans _r1 _r2 ih1 ih2 => exact (
+    TIbind ih1 fun a =>
+    TIbind ih2 fun b =>
+    elem (transitivity a b))
+
+
+theorem confluence {Γ} {x y z : Term Γ}
+  : Reduces x y → Reduces x z → ∃ u, Reduces y u ∧ Reduces z u :=
+  fun r s =>
+    let (elem r') := reducesToUnion r
+    let (elem s') := reducesToUnion s
+    let ⟨u, s, t⟩ := allStepConfluence r' s'
+    ⟨u, unionToReduces s, unionToReduces t⟩
+
+def equiv {Γ} : Term Γ → Term Γ → Prop := 
+  fun a b => ∃ c, Reduces a c ∧ Reduces b c 
+
+def equivRefl {Γ} {t : Term Γ} : equiv t t := ⟨t, Reduces.refl, Reduces.refl⟩
+
+theorem equivLam {Γ} {a b : Term (succ Γ)}
+  (eq : equiv a b) : equiv (lam a) (lam b) := 
+  let ⟨t, ra, rb⟩ := eq
+  ⟨lam t, Reduces.lam ra, Reduces.lam rb⟩
+
+theorem equivApp {Γ} {a1 b1 a2 b2 : Term Γ}
+  (eq1 : equiv a1 a2) (eq2 : equiv b1 b2)
+  : equiv (app a1 b1) (app a2 b2) :=
+  let ⟨a, ra1, ra2⟩ := eq1
+  let ⟨b, rb1, rb2⟩ := eq2
+  ⟨app a b, Reduces.app ra1 rb1, Reduces.app ra2 rb2⟩
+
+def SubstReduces {n1 n2} (sub1 sub2 : Subst n1 n2) : Prop :=
+  (x : Var n1) → Reduces (sub1 x) (sub2 x) 
+
+def SubstEquiv {n1 n2} (sub1 sub2 : Subst n1 n2) : Prop :=
+  ∃ sub, SubstReduces sub1 sub ∧ SubstReduces sub2 sub 
+
+def substEquivRefl {n1 n2} {sub : Subst n1 n2} : SubstEquiv sub sub :=
+  ⟨sub, fun _ => Reduces.refl, fun _ => Reduces.refl⟩ 
+
+theorem reducesSubst {n1 n2} {t1 t2 : Term n1} {sub1 sub2 : Subst n1 n2}
+  (rt : Reduces t1 t2) (rsub : SubstReduces sub1 sub2)
+  : Reduces (subst sub1 t1) (subst sub2 t2) :=
+  (unionToReduces _)
+
+theorem equivSubst {n1 n2} {t1 t2 : Term n1} {sub1 sub2 : Subst n1 n2}
+  (eq1 : equiv t1 t2) (eq2 : SubstEquiv sub1 sub2)
+  : equiv (subst sub1 t1) (subst sub2 t2) :=
+  _
+
+def QTerm (Γ : Context) : Type := Quot (@equiv Γ)
+
+def q {Γ} : Term Γ → QTerm Γ :=
+  fun t => Quot.mk equiv t
+
+def lift {Γ} {β : Sort u}
+  : (f : Term Γ → β)
+    → (∀ {a b}, equiv a b → f a = f b) → Quot (@equiv Γ) → β := Quot.lift
+
+def lift2 {Γ} {β : Sort u}
+  : (f : Term Γ → Term Γ → β)
+    → (∀ {a b a' b'}, equiv a b → equiv a' b' → f a a' = f b b')
+    → Quot (@equiv Γ) → Quot (@equiv Γ) → β :=
+    fun f proof q1 q2 =>
+    lift (fun t1 q2 => lift (fun t2 => f t1 t2) (fun eq => (proof equivRefl eq)) q2)
+      (fun eq => by (
+        apply funext
+        apply Quot.ind
+        simp [lift]
+        intro a
+        apply (proof eq equivRefl)))
+      q1 q2
+
+def qlam {Γ} : QTerm (succ Γ) → QTerm Γ :=   
+  fun t => lift (q ∘ lam) (fun eq => (Quot.sound (equivLam eq))) t
+
+theorem qlamWorksDefinitionally {Γ} {t : Term (succ Γ)}
+  : qlam (q t) = q (lam t) := by rfl
+
+
+def qapp {Γ} : QTerm Γ → QTerm Γ → QTerm Γ :=   
+  fun a b => lift2 (fun t1 t2 => q (app t1 t2)) (fun eq1 eq2 => Quot.sound (equivApp eq1 eq2)) a b
+
+theorem qappWorksDefinitionally {Γ} {a b : Term Γ}
+  : qapp (q a) (q b) = q (app a b) := rfl
+
+theorem exampleInequality :
+  @ q zero (lam (lam (var Var.zero))) ≠ q (lam (lam (var (Var.succ Var.zero)))) := by
+  intro eq
+  --
+  sorry
+
+def qSubst : Context → Context → Type := fun n1 n2 => Var n1 → QTerm n2 
+
+-- def substEquiv {n1 n2} (s1 s2 : Subst n1 n2) : Prop := (x : Var n1) → equiv (s1 x) (s2 x)
+
+def qSubst2 : Context → Context → Type := fun n1 n2 => Quot (@SubstEquiv n1 n2)
+
+def qsubst2 {n1 n2} (qsub : qSubst2 n1 n2) (qt : QTerm n1) : QTerm n2 :=
+  Quot.lift (fun sub => lift (fun t => q (subst sub t)) (fun eq => Quot.sound (equivSubst eq substEquivRefl)) qt)
+    (fun _ _ seq => by
+      simp[lift, Quot.lift];
+      apply (Quot.ind (β := fun qt => Quot.lift _ _ qt = Quot.lift _ _ qt) _ qt)
+      simp
+      intro a
+      apply Quot.sound
+      apply equivSubst
+      apply equivRefl
+      apply seq
+    ) qsub
+
+theorem qsubst2app {n1 n2} {qsub : qSubst2 n1 n2} (q1 q2 : QTerm n1)
+  : qsubst2 qsub (qapp q1 q2) = qapp (qsubst2 qsub q1) (qsubst2 qsub q2) := by
+    -- have lemma1 {t1} {q2} : qsubst2 qsub (qapp (q t1) q2) = qapp (qsubst2 qsub (q t1)) (qsubst2 qsub q2) := by
+    --   sorry
+    have lemma {n} {t : Term n} : q t = Quot.mk equiv t := by rfl
+    revert q1
+    apply Quot.ind
+    intro t1
+    revert q2
+    apply Quot.ind
+    intro t2
+    repeat rw [<- lemma]
+    rw [qappWorksDefinitionally]
+    simp [qapp, lift2, lift, Quot.lift]
+    simp [qapp, qsubst2]
+    --
+
+-- def subLast {n} (t1 : Term (succ n)) (t2 : Term n) : Term n :=
+--   subst (substZero t2) t1
+-- def qSubLast {n} (q1 : QTerm (succ n)) (q2 : QTerm n) : QTerm n :=
+--   qsubst2 (substZero _) q1
+
+
+-- def qSubstTo2 {n1 n2} : qSubst n1 n2 → qSubst2 n1 n2 := fun s =>
+--   _ 
+
+def qexts {n1 n2} (sub : qSubst n1 n2) : qSubst (succ n1) (succ n2) :=
+  fun x => match x with
+           | Var.zero => q (var Var.zero)
+           | Var.succ x' => _ -- rename Var.succ (sub x')
+
+def tsubst {n1 n2} (s : qSubst n1 n2) (t : Term n1) : QTerm n2 :=
+  match t with
+  | var i => s i
+  | lam t => qlam (tsubst (qexts s) t)
+  | app t1 t2 => qapp (tsubst s t1) (tsubst s t2)
+
+def qsubst {n1 n2} (s : qSubst n1 n2) (t : QTerm n1) : QTerm n2 :=
+  lift (tsubst s) _ t
+
+-- there has to be a better way. I just proved all that stuff up to confluence, surely I can use it now.
+
+def lift2' {A B} {R : A → A → Prop} {S : B → B → Prop} {β : Sort u}
+  : (f : A → B → β)
+    → (∀ {a b a' b'}, R a b → S a' b' → f a a' = f b b')
+    → Quot R → Quot S → β := sorry
+    -- fun f proof q1 q2 =>
+    -- Quot.lift (fun t1 q2 => Quot.lift (fun t2 => f t1 t2) (fun eq => _) q2)
+    --   (fun eq => by (
+    --     apply funext
+    --     apply Quot.ind
+    --     simp [lift]
+    --     intro a
+    --     apply (proof eq equivRefl)))
+    --   q1 q2
+
+-- def qsubst2 {n1 n2} (s : Subst n1 n2) (t : QTerm n1) : QTerm n2 :=
+
+-- as an example:
+def qSubLast {n} (q1 : QTerm (succ n)) (q2 : QTerm n) : QTerm n :=
+  lift2' (fun t1 t2 => q (subLast t1 t2)) (fun eq1 eq2 => Quot.sound _) q1 q2
+
+def qBeta : ∀ {Γ} {N : QTerm (succ Γ)} {M : QTerm Γ},
+    (qapp (qlam N) M) = (qSubLast N M) :=
+    _
+
+def wk {n} (qt : QTerm n) : QTerm (succ n) :=
+  lift (fun t => q (rename Var.succ t)) (fun eq => Quot.sound _) qt
+
+-- -- An example to try out proving equality by rewriting:
+theorem exampleEquality {M : QTerm zero}
+  : qapp (qlam (wk M)) M = M := by
+  --
+  rw [qBeta]
+  --
+  sorry
+
+-- theorem qapp ((qlam t) t2) = t [t2]
+
+-- tactic simplify = repeat rw [qapp, ...] at *

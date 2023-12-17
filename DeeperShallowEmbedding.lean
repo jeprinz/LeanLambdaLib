@@ -839,3 +839,182 @@ theorem exampleProof4
       simplify
       rfl
 
+--------------------------------------------------------------------------------
+--------- Shallow Embedding ----------------------------------------------------
+--------------------------------------------------------------------------------
+
+def finChurch (total : Context) (index : Var total) : QTerm zero :=  
+  let rec wrap (n : Context) (t : QTerm n) : QTerm zero  :=
+    match n with
+    | zero => t
+    | Context.succ n' => wrap n' (qlam t)
+  (wrap total (qvar index))
+
+def pairChurch {n} (a b : QTerm n) : QTerm n :=
+  qlam (qapp (qapp (qvar Var.zero) (qsubst qSucc a)) (qsubst qSucc b))
+
+def natToCtx (n : Nat) : Context :=
+  match n with
+  | Nat.zero => Context.zero
+  | Nat.succ n' => Context.succ (natToCtx n')
+
+def wk {n} (t : QTerm n) : QTerm (Context.succ n) := qsubst qSucc t
+
+-- def finToVar {n} (i : Fin n) : Var (natToCtx n) :=
+--   match i with
+--   | Fin.zero => Var.zero
+--   | Fin.succ => _
+
+namespace S
+  def Term := QTerm zero
+  def const := finChurch (natToCtx 10)
+  def s : ∀{Γ}, Var Γ → Var (succ Γ)  := Var.succ
+  def z : ∀{Γ}, Var (succ Γ) := Var.zero
+
+  -- contexts
+  def nil : Term := const z
+  def cons (Γ T : Term) : Term :=
+    qapp (qapp (const (s z)) Γ) T
+    -- TODO TODO TODO TODO TODO: this is wrong. Consts don't work like I wanted them to here.
+    -- The issue is that (const _) a b actually normalizes, and the a and b completely dissapear!
+  
+  -- debruin indices
+  -- same = λ p. p (λ x y. x)
+  def same : Term := const (s (s z))
+  -- next i = λ p. p (λ x y. i y)
+  def next (i : Term) : Term :=
+    qapp (const (s (s (s z)))) i
+
+  -- types
+  -- pi A B = λ γ. (const 4) (A γ) (λ a. B (γ, a))
+  def pi (A B : Term) : Term :=
+    qlam (
+      qapp (qapp (wk (const (s (s (s (s z))))))
+        (qapp (wk A) (qvar z)))
+        (qlam (qapp (wk (wk B))
+          (pairChurch (qvar (s z)) (qvar z))))
+    )
+  -- U = λ γ. const 5
+  def U : Term := qlam (qsubst qSucc (const (s (s (s (s (s z)))))))
+
+  -- terms
+  -- var i = i
+  def var (i : Term) : Term := i
+  -- lambda body = λ γ. λ a. body (γ, a)
+  def lambda (body : Term) : Term :=
+    qlam (qlam (
+        (qapp (wk (wk body))
+          (pairChurch (qvar (s z)) (qvar z)))))
+  -- app t1 t2 = λ γ. (t1 γ) (t2 γ)
+  def app (t1 t2 : Term) : Term :=
+    qlam (
+        (qapp (qapp (wk t1) (qvar z))
+          (qapp (wk t2) (qvar z))))
+  
+  ---- substutions/renamings
+  -- weaken t = λ γ. t (proj₁ γ) = λ γ. t (γ (λ x y . x))
+  def weaken (t : Term) : Term :=
+    qlam (qapp (wk t)
+      (qapp (qvar z) (qlam (qlam (qvar (s z))))))
+  
+  -- subLast t1 t2 = λ γ. t1 (γ, t2 γ)
+  def subLast (t1 t2 : Term) : Term :=
+    qlam (qapp (wk t1)
+      (pairChurch (qvar z)
+        (qapp (wk t2) (qvar z))))
+  
+  -- extend σ t = λ γ. σ γ, t (σ γ)
+  def extend (σ t : Term) : Term :=
+    qlam (pairChurch (qapp (wk σ) (qvar z)) (qapp (wk t) (qapp (wk σ) (qvar z))))
+  
+  -- subst σ t = λ γ. t (σ γ)
+  def subst (σ t : Term) : Term :=
+    qlam (qapp (wk t) (qapp (wk σ) (qvar z)))
+  
+  -- lift σ = λ γ. σ (proj₁ γ), (proj₂ γ)
+  --   = λ γ. σ (γ (λ x y . x)), γ (λ x y . y)
+  def lift (σ : Term) : Term :=
+    qlam (qapp
+      (qapp (wk σ) (qapp (qvar z) (qlam (qlam (qvar (s z))))))
+      (qapp (qvar z) (qlam (qlam (qvar z)))))
+
+
+-- The deeper shallow embedding
+namespace Deeper
+
+  inductive Var : S.Term → S.Term → S.Term → Type   
+  | same : ∀{Γ T}, Var (S.cons Γ T) (S.weaken T) S.same
+  | next : ∀{Γ T A i}, Var Γ A i → Var (S.cons Γ T) (S.weaken T) (S.next i) 
+
+  inductive Typed : S.Term → S.Term → S.Term → Type
+  | lambda : ∀{Γ A B t},
+    Typed (S.cons Γ A) B t → Typed Γ (S.pi A B) (S.lambda t) 
+  | var : ∀{Γ T t}, Var Γ T t → Typed Γ T t 
+  | app : ∀{Γ A B t1 t2},
+    Typed Γ (S.pi A B) t1 → Typed Γ A t2
+      → Typed Γ (S.subLast B t2) (S.app t1 t2)  
+  | pi : ∀{Γ A B},
+    Typed Γ S.U A → Typed (S.cons Γ A) S.U B → Typed Γ S.U (S.pi A B)  
+  -- For now, just Type : Type.
+  | U : ∀{Γ}, Typed Γ S.U S.U
+
+  def recVar
+    (P : S.Term → S.Term → S.Term → Type)
+    (same : ∀{Γ T}, P (S.cons Γ T) (S.weaken T) S.same)
+    (next : ∀{Γ T A i}, P Γ A i → P (S.cons Γ T) (S.weaken T) (S.next i))
+    {Γ T t}
+    (v : Var Γ T t)
+    : P Γ T t :=
+    match v with
+    | Var.same => same
+    | Var.next i => next (recVar P same next i)
+
+  def recTyped
+    (P : S.Term → S.Term → S.Term → Type)
+    (lambda : ∀{Γ A B t},
+      P (S.cons Γ A) B t → P Γ (S.pi A B) (S.lambda t))
+    (var : ∀{Γ T t}, Var Γ T t → P Γ T t)
+    (app : ∀{Γ A B t1 t2}, P Γ (S.pi A B) t1 → P Γ A t2
+        → P Γ (S.subLast B t2) (S.app t1 t2))
+    (pi : ∀{Γ A B},
+      P Γ S.U A → P (S.cons Γ A) S.U B → P Γ S.U (S.pi A B))
+    (U : ∀{Γ}, P Γ S.U S.U)
+    {Γ T t}
+    (term : Typed Γ T t)
+    : P Γ T t :=
+    -- let recurse {Γ T t} : Typed Γ T t → P Γ T t
+    --   := recTyped P lambda var app pi U
+    match term with 
+    | Typed.lambda body => lambda (recTyped P lambda var app pi U body)
+    | Typed.app t1 t2 => app (recTyped P lambda var app pi U t1) (recTyped P lambda var app pi U t2)
+    | Typed.var i => var i
+    | Typed.pi a b => pi (recTyped P lambda var app pi U a) (recTyped P lambda var app pi U b)
+    | Typed.U => U
+
+  -- Renamings and subsitutions:
+  def Ren : S.Term → S.Term → S.Term → Type :=
+    fun σ Γ₂ Γ₁ => ∀{T t}, Var Γ₁ T t → Var Γ₂ (S.subst σ T) (S.subst σ t) 
+  
+  def liftRen : ∀{σ Γ₂ Γ₁ T}, Ren σ Γ₂ Γ₁
+    → Ren (S.lift σ) (S.cons Γ₂ (S.subst σ T)) (S.cons Γ₁ T) := 
+    fun ren _T _t x => -- recVar _ _ _ x
+    -- match x with
+      -- | @Var.same x y => _
+      -- | Var.next i => _
+      _
+
+  def renTerm : ∀{σ Γ₁ Γ₂ T t}, Ren σ Γ₂ Γ₁ → Typed Γ₁ T t
+    → Typed Γ₂ (S.subst σ T) (S.subst σ t) := _
+
+  def true : S.Term := (qlam (qlam (qvar z)))
+  def false : S.Term := (qlam (qlam (qvar (s z))))
+
+  inductive Test : S.Term → S.Term → S.Term → Type 
+  | same : ∀{Γ T}, Test (S.cons Γ T) (S.weaken T) S.same
+  | next : ∀{Γ T A i}, Test Γ A i → Test (S.cons Γ T) (S.weaken T) (S.next i) 
+
+  def testMatch (t1 t2 t3 : S.Term) (x : Test t1 t2 t3)
+    : t1 = t2 /\ t2 = t3:=
+    match x with
+    | Test.same => _
+    | Test.next i => _

@@ -12,12 +12,12 @@ open Option
 
 inductive Context : Type
 | zero : Context
-| succ : Context → Context 
+| succ : Context → Context
 open Context
 
-inductive Var : Context → Type 
+inductive Var : Context → Type
 | zero : ∀ {Γ}, Var (succ Γ)
-| succ : ∀ {Γ}, Var Γ → Var (succ Γ) 
+| succ : ∀ {Γ}, Var Γ → Var (succ Γ)
 
 theorem noVarZero : Var zero → False := by
   let gen : (∀{n}, Var n → n = zero → False) := by
@@ -30,14 +30,14 @@ theorem noVarZero : Var zero → False := by
   apply x
   rfl
 
-inductive Term : Context → Type  
-| var : ∀ {Γ}, Var Γ → Term Γ 
+inductive Term : Context → Type
+| var : ∀ {Γ}, Var Γ → Term Γ
 | lam : ∀ {Γ}, Term (succ Γ) → Term Γ
-| app : ∀ {Γ}, Term Γ → Term Γ → Term Γ  
+| app : ∀ {Γ}, Term Γ → Term Γ → Term Γ
 
 open Term
 
-def Ren (n1 n2 : Context) : Type := Var n1 → Var n2 
+def Ren (n1 n2 : Context) : Type := Var n1 → Var n2
 
 def ext {n1 n2} (ren1 : Ren n1 n2) : (Ren (succ n1) (succ n2))
   := fun x => match x with
@@ -50,7 +50,7 @@ def rename {n1 n2} (ren : Ren n1 n2) (t : Term n1) : Term n2 :=
   | lam t => lam (rename (ext ren) t)
   | app t1 t2 => app (rename ren t1) (rename ren t2)
 
-def Subst (n1 n2 : Context) : Type := Var n1 → Term n2 
+def Subst (n1 n2 : Context) : Type := Var n1 → Term n2
 
 def exts {n1 n2} (sub : Subst n1 n2) : Subst (succ n1) (succ n2) :=
   fun x => match x with
@@ -72,13 +72,13 @@ def subLast {n} (t1 : Term (succ n)) (t2 : Term n) : Term n :=
   subst (substZero t2) t1
 
 mutual
-  inductive Neutral : ∀{Γ}, Term Γ → Type  
-  | var : ∀{Γ}, (x : Var Γ) → Neutral (var x) 
-  | app : ∀{Γ}, {t1 t2 : Term Γ} → Neutral t1 → Normal t2 → Neutral (app t1 t2) 
+  inductive Neutral : ∀{Γ}, Term Γ → Type
+  | var : ∀{Γ}, (x : Var Γ) → Neutral (var x)
+  | app : ∀{Γ}, {t1 t2 : Term Γ} → Neutral t1 → Normal t2 → Neutral (app t1 t2)
 
-  inductive Normal : ∀{Γ}, Term Γ → Type  
-  | neu : ∀{Γ}, {t : Term Γ} → Neutral t → Normal t 
-  | lam : ∀{Γ}, {t : Term (succ Γ)} → Normal t → Normal (lam t) 
+  inductive Normal : ∀{Γ}, Term Γ → Type
+  | neu : ∀{Γ}, {t : Term Γ} → Neutral t → Normal t
+  | lam : ∀{Γ}, {t : Term (succ Γ)} → Normal t → Normal (lam t)
 end
 
 --------------------------------------------------------------------------------
@@ -102,13 +102,13 @@ def compose {n1 n2 n3} : Subst n1 n2 → Subst n2 n3 → Subst n1 n3 :=
 def renToSub {Γ Δ} : Ren Γ Δ → Subst Γ Δ :=
   fun ren => ids ∘ ren
 
-def bla : Nat → Nat := fun x => x 
+def bla : Nat → Nat := fun x => x
 
 theorem subIdL {Γ Δ} {sub : Subst Γ Δ} : compose ids sub = sub :=
   by apply funext
      intro x
      rfl
-     
+
 
 theorem subDist {n1 n2 n3} {sub1 : Subst n1 n2} {sub2 : Subst n2 n3} {M : Term n2}
   : (compose (cons M sub1) sub2) = (cons (subst sub2 M) (compose sub1 sub2)) :=
@@ -186,7 +186,7 @@ theorem composeExt {n1 n2 n3} {ren2 : Ren n2 n3} {ren1 : Ren n1 n2}
   . rfl
   . rfl
 
-theorem composeRename {n1} {M : Term n1} 
+theorem composeRename {n1} {M : Term n1}
   : ∀ {n2 n3} {ren : Ren n2 n3} {ren' : Ren n1 n2},
     rename ren (rename ren' M) = rename (ren ∘ ren') M := by
   induction M with
@@ -269,7 +269,7 @@ theorem subSub {n1} {M : Term n1}
         rw [ih]
         rw [extsSeq]
 
-theorem renameSubst {Γ Δ Δ' : Context} {M : Term Γ} {ren : Ren Γ Δ} {sub : Subst Δ Δ'} 
+theorem renameSubst {Γ Δ Δ' : Context} {M : Term Γ} {ren : Ren Γ Δ} {sub : Subst Δ Δ'}
   : subst sub (rename ren M) = subst (sub ∘ ren) M := by
   rw [renameSubstRen]
   simp [subSub]
@@ -280,7 +280,7 @@ def bloo {n : Nat} : Nat := n
 theorem subAssoc {n1 n2 n3 n4} {sub1 : Subst n1 n2} {sub2 : Subst n2 n3}
   {sub3 : Subst n3 n4}
   : compose (compose sub1 sub2) sub3 = compose sub1 (compose sub2 sub3) := by
-  -- 
+  --
   apply funext
   intro x
   simp [compose]
@@ -334,20 +334,20 @@ theorem renameSubstCommute {Γ Δ} {N : Term (succ Γ)} {M : Term Γ} {ren : Ren
 ---------- A proof of confluence -----------------------------------------------
 --------------------------------------------------------------------------------
 
-inductive Par : ∀{Γ}, Term Γ → Term Γ → Type   
+inductive Par : ∀{Γ}, Term Γ → Term Γ → Type
 | pvar : ∀{Γ} {x : Var Γ}, Par (var x) (var x)
 | plam : ∀{Γ} {N N' : Term (succ Γ)},
-  Par N N' → Par (lam N) (lam N')  
+  Par N N' → Par (lam N) (lam N')
 | papp : ∀{Γ}{L L' M M' : Term Γ},
-  Par L L' → Par M M' → Par (app L M) (app L' M')   
+  Par L L' → Par M M' → Par (app L M) (app L' M')
 | pbeta : ∀{Γ}{N N' : Term (succ Γ)} {M M' : Term Γ},
-  Par N N' → Par M M' → Par (app (lam N) M) (subLast N' M')  
+  Par N N' → Par M M' → Par (app (lam N) M) (subLast N' M')
 
 def ParSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Type :=
   {x : Var Γ} → Par (sub1 x) (sub2 x)
 
 theorem parRename {Γ} {M M' : Term Γ}
-  (p : Par M M') 
+  (p : Par M M')
   : ∀{Δ}, {ren : Ren Γ Δ} → Par (rename ren M) (rename ren M') := by
   induction p with
   | pvar => intros; simp [rename]; apply Par.pvar
@@ -453,7 +453,7 @@ def closeRef {A} (R : Relation A) : Relation A :=
 -- transitive relflexive closure of a relation
 inductive closure {A} (R : Relation A) : A → A → Type
 | refl : ∀{a : A}, closure R a a
-| cons : ∀{x y : A}, R x y → closure R y z  → closure R x z 
+| cons : ∀{x y : A}, R x y → closure R y z  → closure R x z
 
 def oneStep {A} {R : Relation A} {x y : A} (step : R x y)
   : closure R x y := closure.cons step closure.refl
@@ -498,14 +498,14 @@ def confluent {A} (R : Relation A) : Type := diamond (closure R)
 theorem stripLemma {A} {R S : Relation A}
   (sq : square R S (closure S) (closeRef R))
   : square R (closure S) (closure S) (closure R) :=
-  fun {_x} {y} {z} Rxy Sxz => 
+  fun {_x} {y} {z} Rxy Sxz =>
   match Sxz with
-  | closure.refl => ⟨y, closure.refl, oneStep Rxy⟩ 
+  | closure.refl => ⟨y, closure.refl, oneStep Rxy⟩
   | closure.cons xx' x'z =>
     let ⟨out, s, r⟩ := sq Rxy xx'
     match r with
     | Sum.inl (Proof.proof p) =>
-      ⟨z, transitivity s (by rw [<- p]; exact x'z), closure.refl⟩ 
+      ⟨z, transitivity s (by rw [<- p]; exact x'z), closure.refl⟩
     | Sum.inr r' =>
       let ⟨out2, s2, r2⟩ := stripLemma sq r' x'z
       ⟨out2, transitivity s s2, r2⟩
@@ -513,13 +513,13 @@ theorem stripLemma {A} {R S : Relation A}
 theorem commutationLemma {A} {R S : Relation A}
   (sq : square R S (closure S) (closeRef R))
   : square (closure R) (closure S) (closure S) (closure R) :=
-  fun {_x} {y} {z} Rxy Sxz => 
+  fun {_x} {y} {z} Rxy Sxz =>
   match Rxy with
   | closure.refl => ⟨z, Sxz, closure.refl⟩
   | closure.cons xx' x'z =>
     let ⟨_out, s, r⟩ := stripLemma sq xx' Sxz
     let ⟨out2, s2, r2⟩ := commutationLemma sq x'z s
-    ⟨out2, s2, transitivity r r2⟩ 
+    ⟨out2, s2, transitivity r r2⟩
 
 
 -- TODO:
@@ -563,7 +563,7 @@ theorem diamondToProperty {A} {R : Relation A}
   : square R R (closure R) (closeRef R) :=
   fun s1 s2 =>
     let ⟨_, s2', s1'⟩ := d s1 s2
-    ⟨_, oneStep s2', Sum.inr s1'⟩ 
+    ⟨_, oneStep s2', Sum.inr s1'⟩
 
 theorem parsConfluence {Γ} : confluent (@Par Γ):=
   commutationLemma (diamondToProperty parDiamond)
@@ -575,24 +575,24 @@ theorem substConfluence {Γ} {Δ} : confluent (@ParSubst Γ Δ):=
 -- Look at the part about setoids and Quotient
 
 
--- Define 
+-- Define
 -- Define QTerm with Setoid and Quotient
 -- Define QSubst
 
 def equiv {A} (R : Relation A) : A → A → Prop :=
   fun x y =>
-    Nonempty (Σ z, 
+    Nonempty (Σ z,
     (R x z) × (R y z))
 
 def confluentToEquivalence {A} {R : Relation A}
   : confluent R → Equivalence (equiv (closure R)) :=
   fun conf =>
     {refl := fun x => Nonempty.intro ⟨x, closure.refl, closure.refl⟩
-    , symm := fun ⟨z, xz, yz⟩ => ⟨z, yz, xz⟩ 
+    , symm := fun ⟨z, xz, yz⟩ => ⟨z, yz, xz⟩
     , trans := fun (Nonempty.intro ⟨_a, xa, ya⟩)
       (Nonempty.intro ⟨_b, yb, zb⟩) =>
       let ⟨c, ac, bc⟩ := conf ya yb
-      Nonempty.intro ⟨c, transitivity xa ac, transitivity zb bc⟩ 
+      Nonempty.intro ⟨c, transitivity xa ac, transitivity zb bc⟩
     }
 
 def STerm {Γ} : Setoid (Term Γ) := {
@@ -635,26 +635,26 @@ theorem equivApp {Γ} {a1 b1 a2 b2 : Term Γ}
     parsAppCong ra1 rb1
     , parsAppCong ra2 rb2⟩
 
-def qapp {Γ} : QTerm Γ → QTerm Γ → QTerm Γ :=   
+def qapp {Γ} : QTerm Γ → QTerm Γ → QTerm Γ :=
   fun a b => Quotient.lift₂ (s₁ := STerm) (s₂ := STerm)
     (fun t1 t2 => Quotient.mk STerm (app t1 t2))
     (fun _ _ _ _ eq1 eq2 =>
       Quotient.sound (equivApp eq1 eq2)) a b
 
-def qlam {Γ} : QTerm (succ Γ) → QTerm Γ :=   
+def qlam {Γ} : QTerm (succ Γ) → QTerm Γ :=
   fun t => Quotient.lift (s := STerm)
     ((Quotient.mk STerm) ∘ lam)
     (fun _ _ eq => (Quotient.sound (equivLam eq))) t
 
-def qvar {Γ} : Var Γ → QTerm Γ := fun x => 
+def qvar {Γ} : Var Γ → QTerm Γ := fun x =>
   Quotient.mk STerm (var x)
 
 def qsubst {n1 n2} (sub : QSubst n1 n2) (t : QTerm n1) : QTerm n2 :=
   Quotient.lift₂ (s₁ := SSubst) (s₂ := STerm) (fun sub t => Quotient.mk STerm (subst sub t))
     (fun _sub1 _t1 _sub2 _t2 subEq tEq =>
-      let (Nonempty.intro ⟨sub, Rsub1, Rsub2⟩) := subEq 
-      let (Nonempty.intro ⟨t, Rt1, Rt2⟩) := tEq 
-      -- let (Nonempty.intro blasdf) := subEq 
+      let (Nonempty.intro ⟨sub, Rsub1, Rsub2⟩) := subEq
+      let (Nonempty.intro ⟨t, Rt1, Rt2⟩) := tEq
+      -- let (Nonempty.intro blasdf) := subEq
       Quotient.sound (Nonempty.intro
         ⟨subst sub t, substPars Rsub1 Rt1, substPars Rsub2 Rt2⟩))
       sub t
@@ -793,7 +793,7 @@ theorem ruleBeta {n} {t1 : QTerm (succ n)} {t2 : QTerm n}
   simp [qsubst, qSubstZero, qSucc, Quotient.lift₂, Quotient.lift, Quotient.mk, Quot.lift
     , qapp, qlam]
   apply Quotient.sound
-  exact ⟨_, oneStep (Par.pbeta parRefl parRefl), closure.refl⟩ 
+  exact ⟨_, oneStep (Par.pbeta parRefl parRefl), closure.refl⟩
 
 --------------------------------------------------------------------------------
 
@@ -843,7 +843,7 @@ theorem exampleProof4
 --------- Shallow Embedding ----------------------------------------------------
 --------------------------------------------------------------------------------
 
-def finChurch (total : Context) (index : Var total) : QTerm zero :=  
+def finChurch (total : Context) (index : Var total) : QTerm zero :=
   let rec wrap (n : Context) (t : QTerm n) : QTerm zero  :=
     match n with
     | zero => t
@@ -877,7 +877,7 @@ namespace S
     qapp (qapp (const (s z)) Γ) T
     -- TODO TODO TODO TODO TODO: this is wrong. Consts don't work like I wanted them to here.
     -- The issue is that (const _) a b actually normalizes, and the a and b completely dissapear!
-  
+
   -- debruin indices
   -- same = λ p. p (λ x y. x)
   def same : Term := const (s (s z))
@@ -910,27 +910,27 @@ namespace S
     qlam (
         (qapp (qapp (wk t1) (qvar z))
           (qapp (wk t2) (qvar z))))
-  
+
   ---- substutions/renamings
   -- weaken t = λ γ. t (proj₁ γ) = λ γ. t (γ (λ x y . x))
   def weaken (t : Term) : Term :=
     qlam (qapp (wk t)
       (qapp (qvar z) (qlam (qlam (qvar (s z))))))
-  
+
   -- subLast t1 t2 = λ γ. t1 (γ, t2 γ)
   def subLast (t1 t2 : Term) : Term :=
     qlam (qapp (wk t1)
       (pairChurch (qvar z)
         (qapp (wk t2) (qvar z))))
-  
+
   -- extend σ t = λ γ. σ γ, t (σ γ)
   def extend (σ t : Term) : Term :=
     qlam (pairChurch (qapp (wk σ) (qvar z)) (qapp (wk t) (qapp (wk σ) (qvar z))))
-  
+
   -- subst σ t = λ γ. t (σ γ)
   def subst (σ t : Term) : Term :=
     qlam (qapp (wk t) (qapp (wk σ) (qvar z)))
-  
+
   -- lift σ = λ γ. σ (proj₁ γ), (proj₂ γ)
   --   = λ γ. σ (γ (λ x y . x)), γ (λ x y . y)
   def lift (σ : Term) : Term :=
@@ -942,19 +942,19 @@ namespace S
 -- The deeper shallow embedding
 namespace Deeper
 
-  inductive Var : S.Term → S.Term → S.Term → Type   
+  inductive Var : S.Term → S.Term → S.Term → Type
   | same : ∀{Γ T}, Var (S.cons Γ T) (S.weaken T) S.same
-  | next : ∀{Γ T A i}, Var Γ A i → Var (S.cons Γ T) (S.weaken T) (S.next i) 
+  | next : ∀{Γ T A i}, Var Γ A i → Var (S.cons Γ T) (S.weaken T) (S.next i)
 
   inductive Typed : S.Term → S.Term → S.Term → Type
   | lambda : ∀{Γ A B t},
-    Typed (S.cons Γ A) B t → Typed Γ (S.pi A B) (S.lambda t) 
-  | var : ∀{Γ T t}, Var Γ T t → Typed Γ T t 
+    Typed (S.cons Γ A) B t → Typed Γ (S.pi A B) (S.lambda t)
+  | var : ∀{Γ T t}, Var Γ T t → Typed Γ T t
   | app : ∀{Γ A B t1 t2},
     Typed Γ (S.pi A B) t1 → Typed Γ A t2
-      → Typed Γ (S.subLast B t2) (S.app t1 t2)  
+      → Typed Γ (S.subLast B t2) (S.app t1 t2)
   | pi : ∀{Γ A B},
-    Typed Γ S.U A → Typed (S.cons Γ A) S.U B → Typed Γ S.U (S.pi A B)  
+    Typed Γ S.U A → Typed (S.cons Γ A) S.U B → Typed Γ S.U (S.pi A B)
   -- For now, just Type : Type.
   | U : ∀{Γ}, Typed Γ S.U S.U
 
@@ -984,7 +984,7 @@ namespace Deeper
     : P Γ T t :=
     -- let recurse {Γ T t} : Typed Γ T t → P Γ T t
     --   := recTyped P lambda var app pi U
-    match term with 
+    match term with
     | Typed.lambda body => lambda (recTyped P lambda var app pi U body)
     | Typed.app t1 t2 => app (recTyped P lambda var app pi U t1) (recTyped P lambda var app pi U t2)
     | Typed.var i => var i
@@ -993,10 +993,10 @@ namespace Deeper
 
   -- Renamings and subsitutions:
   def Ren : S.Term → S.Term → S.Term → Type :=
-    fun σ Γ₂ Γ₁ => ∀{T t}, Var Γ₁ T t → Var Γ₂ (S.subst σ T) (S.subst σ t) 
-  
+    fun σ Γ₂ Γ₁ => ∀{T t}, Var Γ₁ T t → Var Γ₂ (S.subst σ T) (S.subst σ t)
+
   def liftRen : ∀{σ Γ₂ Γ₁ T}, Ren σ Γ₂ Γ₁
-    → Ren (S.lift σ) (S.cons Γ₂ (S.subst σ T)) (S.cons Γ₁ T) := 
+    → Ren (S.lift σ) (S.cons Γ₂ (S.subst σ T)) (S.cons Γ₁ T) :=
     fun ren _T _t x => -- recVar _ _ _ x
     -- match x with
       -- | @Var.same x y => _
@@ -1009,9 +1009,9 @@ namespace Deeper
   def true : S.Term := (qlam (qlam (qvar z)))
   def false : S.Term := (qlam (qlam (qvar (s z))))
 
-  inductive Test : S.Term → S.Term → S.Term → Type 
+  inductive Test : S.Term → S.Term → S.Term → Type
   | same : ∀{Γ T}, Test (S.cons Γ T) (S.weaken T) S.same
-  | next : ∀{Γ T A i}, Test Γ A i → Test (S.cons Γ T) (S.weaken T) (S.next i) 
+  | next : ∀{Γ T A i}, Test Γ A i → Test (S.cons Γ T) (S.weaken T) (S.next i)
 
   def testMatch (t1 t2 t3 : S.Term) (x : Test t1 t2 t3)
     : t1 = t2 /\ t2 = t3:=

@@ -41,9 +41,9 @@ declare_syntax_cat lambda_scope
 syntax ident : lambda_scope
 
 -- it breaks when i change term to lambda_scope, i need to figure out how to fix that
-syntax:10 (name := lambda_scoper) "<A" lambda_scope:10 "A>" : term
+syntax:10 (name := lambda_scoper) "<" lambda_scope:10 ">" : term
 syntax "(" lambda_scope ")" : lambda_scope
-syntax "<U" term:60 "U>" : lambda_scope
+syntax "{" term:10 "}" : lambda_scope
 syntax:60 lambda_scope:60 lambda_scope:61 : lambda_scope
 -- syntax lambda_scope lambda_scope+ : lambda_scope
 syntax "λ" ident+ "." lambda_scope : lambda_scope
@@ -81,7 +81,7 @@ partial def buildVarFromCtx (name : String) (ctx : Q(Ctx)) : MetaM Expr := -- Me
       else do let i : Q(Var $rest) <- buildVarFromCtx name q($rest)
               return q(@Var.succ $rest $name2 $i)
   | ~q(List.nil) => throwError "variable not found"
-  | _ => throwError "variable not found"
+  | _ => throwError (String.join ["variable `", name, "' not found"])
 
 def elabVarFromStringImpl (typ : Q(Type)) : MetaM Expr := do
   let ~q(Var $ctx) := typ | throwError "bad"
@@ -107,24 +107,24 @@ def elabVarFromString : TermElab := fun stx typ? => do
 
 -- heavily referenced https://stackoverflow.com/questions/79575084/lean4-lambda-calculus-dsl-macro
 macro_rules
-  | `(<A λ $xs:ident* . $body:lambda_scope A>) => do
-    let mut acc <- `(<A $body A>)
+  | `(< λ $xs:ident* . $body:lambda_scope >) => do
+    let mut acc <- `(< $body >)
     for x in xs.reverse do
       acc <- `(Term.lam $(Lean.quote (toString x.getId)) $acc)
     return acc
-  | `(<A $x:lambda_scope $xs:lambda_scope A>) => do
-    `(Term.app (<A $x A>) (<A $xs A>))
-  | `(<A $s:ident A>) =>
+  | `(< $x:lambda_scope $xs:lambda_scope >) => do
+    `(Term.app (< $x >) (< $xs >))
+  | `(< $s:ident >) =>
     let str := toString s.getId
     if firstLetterCapital str
       then `(Term.const $(Lean.quote str)) -- `(Term.const "he")
       else `(Term.var (namedvar $s))
-  | `(<A ($t:lambda_scope) A>) => `(<A $t A>)
-  -- | `(<A <U $t:term U> A>) => t -- Macro.throwError "thisd fklsdjf "
+  | `(< ($t:lambda_scope) >) => `(< $t >)
+  | `(< { $t:term } >) => `($t)
 
-#reduce <A <U 5 U> A>
-#reduce <A Z A>
-#reduce <A (λ x y z . A) B C D A>
-#reduce <A λ x. x A>
-#reduce <A λ x . x A>
-#reduce <A λ x . <U Var.zero "x" U> A>
+#reduce < { 5 } >
+#reduce < Z >
+#reduce < (λ x y z . A) B C D >
+#reduce < λ x. x >
+#reduce < λ x . x >
+#reduce < λ x . { Term.var (Var.zero "x") } >

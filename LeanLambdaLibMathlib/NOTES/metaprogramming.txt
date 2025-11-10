@@ -1,0 +1,8 @@
+i think i will need to use the Qq library
+Qq is part of mathlib, and also mathlib has some extra stuff for it. see:
+https://leanprover-community.github.io/mathlib4_docs/Qq/Macro.html
+https://leanprover-community.github.io/mathlib4_docs/Qq/Match.html
+https://leanprover-community.github.io/mathlib4_docs/Mathlib/Util/Qq.html
+
+also Qq itself: https://github.com/leanprover-community/quote4
+

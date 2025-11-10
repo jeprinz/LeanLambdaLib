@@ -1,0 +1,9 @@
+in this repo, i'm going to build the final version of my thesis project.
+
+[ ] - define lambda calculus with nice human readable and writable syntax (beta and eta (actually do i need eta?)).
+[ ] - prove confluence
+[ ] - build higher order unification automation
+[ ] - build general recursion library
+[ ] - define embedding and logical predicate, using both the lambda stuff and the general rec library
+[ ] - make a sweet proof of canonicity
+[ ] - maybe consider expanding to weak or strong normalization somehow

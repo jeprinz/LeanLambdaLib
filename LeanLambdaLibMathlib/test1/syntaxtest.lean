@@ -23,7 +23,7 @@ import Qq.Match
 import Lean
 -- import Init.Data.String -- needed
 -- import String
-open Lean Elab Meta Term Meta Command Qq Match
+open Lean Elab Meta Term Meta Command Qq Match PrettyPrinter Delaborator SubExpr
 
 def Ctx := List String
 
@@ -35,7 +35,7 @@ inductive Term : Ctx → Type
 | const : ∀ {Γ}, String → Term Γ
 | var : ∀ {Γ}, Var Γ → Term Γ
 | lam : ∀ {Γ}, (s : String) → Term (s :: Γ) → Term Γ
-| app : ∀ {Γ}, Term Γ → Term Γ → Term Γ
+-- | app : ∀ {Γ}, Term Γ → Term Γ → Term Γ
 
 declare_syntax_cat lambda_scope
 syntax ident : lambda_scope
@@ -112,12 +112,12 @@ macro_rules
     for x in xs.reverse do
       acc <- `(Term.lam $(Lean.quote (toString x.getId)) $acc)
     return acc
-  | `(< $x:lambda_scope $xs:lambda_scope >) => do
-    `(Term.app (< $x >) (< $xs >))
+  -- | `(< $x:lambda_scope $xs:lambda_scope >) => do
+    -- `(Term.app (< $x >) (< $xs >))
   | `(< $s:ident >) =>
     let str := toString s.getId
     if firstLetterCapital str
-      then `(Term.const $(Lean.quote str)) -- `(Term.const "he")
+      then `(Term.const $(Lean.quote str))
       else `(Term.var (namedvar $s))
   | `(< ($t:lambda_scope) >) => `(< $t >)
   | `(< { $t:term } >) => `($t)
@@ -128,3 +128,28 @@ macro_rules
 #reduce < λ x. x >
 #reduce < λ x . x >
 #reduce < λ x . { Term.var (Var.zero "x") } >
+#reduce < λ x . ABCD >
+
+-- https://leanprover-community.github.io/lean4-metaprogramming-book/extra/03_pretty-printing.html
+
+#check (Syntax.ident SourceInfo.none ("sdf".toSubstring) (Name.mkSimple "sdf"))
+
+@[app_unexpander Term.const]
+def unexpandConst : Unexpander
+  | `($_const $x:str) =>
+    let str := x.getString
+    let name : Syntax := mkIdent $ Name.mkSimple str
+    let bla : TSyntax _ := {raw := name}
+    `(< $bla >)
+  | _ => throw ()
+
+@[app_unexpander Term.lam]
+def unexpandLam : Unexpander
+  | `($_ $name:str $body) =>
+    let name2 := mkIdent $ Name.mkSimple name.getString
+    match body with
+    | `(< $inside >) => `(< λ $name2 . $inside >)
+    | _ => `(downhere)
+  | _ => throw ()
+
+#reduce < λ x y z . ABCD >

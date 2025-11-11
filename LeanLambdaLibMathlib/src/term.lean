@@ -1,30 +1,6 @@
-/-
-notes on lean's syntax mechanisms:
-from https://lean-lang.org/doc/reference/latest/Notations-and-Macros/#language-extension
-- notations (called operators when infix) are like coq notations, some small differences but basically the same idea.
-- the "Defining New Syntax" section describes their syntax tree type, and ways of defining syntax categories
-- macros convert syntax to syntax
-- elaborators convert syntax to (either commands or terms)
-
-
-- https://leanprover-community.github.io/lean4-metaprogramming-book/main/08_dsls.html
-
-- https://stackoverflow.com/questions/79575084/lean4-lambda-calculus-dsl-macro
-
-- https://lean-lang.org/examples/1900-1-1-arithmetic-as-an-embedded-language/
-
-something: https://overreacted.io/a-lean-syntax-primer/
-
-so there are a few things that can work.
-[ ] - should i work with scoped or unscoped syntax?
-[ ] -
-
--/
 import Qq
 import Qq.Match
 import Lean
--- import Init.Data.String -- needed
--- import String
 open Lean Elab Meta Term Meta Command Qq Match PrettyPrinter Delaborator SubExpr
 
 def Ctx := List String
@@ -109,8 +85,6 @@ macro_rules
   | `(< ($t:lambda_scope) >) => `(< $t >)
   | `(< { $t:term } >) => `($t)
 
-axiom freeterm : ∀{Γ}, Term Γ
-
 #reduce < { 5 } >
 #reduce < Z >
 #reduce < (λ x y z . A) B C D >
@@ -119,7 +93,6 @@ axiom freeterm : ∀{Γ}, Term Γ
 #reduce < λ x . { Term.var "x" (Var.zero "x") } >
 #reduce < λ x . ABCD >
 #reduce < λ x y z . y >
-#reduce < λ x. {freeterm} >
 
 -- https://leanprover-community.github.io/lean4-metaprogramming-book/extra/03_pretty-printing.html
 
@@ -184,6 +157,7 @@ def unexpandVar : Unexpander
     `(< $tname >)
   | _ => throw ()
 
+
 #reduce < λ x y z . ABCD >
 #reduce <A B>
 #check (Term.var "a" (Var.zero "a"))
@@ -191,8 +165,6 @@ def unexpandVar : Unexpander
 #reduce <A (B C)>
 #reduce <(λ x . x) A>
 #reduce <(λ x y . x) (λ a b c . a (b c))>
-#reduce <λ x. {freeterm}>
-#reduce <{123}>
 
 /-
 there are things called the "parenthesizer" and "formatter"
@@ -202,10 +174,4 @@ the only option is to read the source code.
 i have gotten around the need for the parenthesizer by programming the unexpander for app to
 insert parentheses. but it might be nicer to use a parenthesizer, and i still haven't got whitespace
 good which would require the formatter.
-
-i need to have an inversion to the {} notation for printing.
-the issue is that when it comes to unexpanding and delaborating, all of the unexpanders and delaborators
-have to be based on a specific function name. but actually i want it to be more of a default case
-that can work on anything.
-maybe there is a way to have it work on variables?
 -/

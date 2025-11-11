@@ -35,7 +35,7 @@ inductive Term : Ctx → Type
 | const : ∀ {Γ}, String → Term Γ
 | var : ∀ {Γ}, Var Γ → Term Γ
 | lam : ∀ {Γ}, (s : String) → Term (s :: Γ) → Term Γ
--- | app : ∀ {Γ}, Term Γ → Term Γ → Term Γ
+| app : ∀ {Γ}, Term Γ → Term Γ → Term Γ
 
 declare_syntax_cat lambda_scope
 syntax ident : lambda_scope
@@ -46,7 +46,7 @@ syntax "(" lambda_scope ")" : lambda_scope
 syntax "{" term:10 "}" : lambda_scope
 syntax:60 lambda_scope:60 lambda_scope:61 : lambda_scope
 -- syntax lambda_scope lambda_scope+ : lambda_scope
-syntax "λ" ident+ "." lambda_scope : lambda_scope
+syntax "λ" ident+ ". " lambda_scope : lambda_scope
 
 -- open String
 def firstLetterCapital (s : String) : Bool :=
@@ -112,8 +112,8 @@ macro_rules
     for x in xs.reverse do
       acc <- `(Term.lam $(Lean.quote (toString x.getId)) $acc)
     return acc
-  -- | `(< $x:lambda_scope $xs:lambda_scope >) => do
-    -- `(Term.app (< $x >) (< $xs >))
+  | `(< $x:lambda_scope $xs:lambda_scope >) => do
+    `(Term.app (< $x >) (< $xs >))
   | `(< $s:ident >) =>
     let str := toString s.getId
     if firstLetterCapital str
@@ -129,6 +129,7 @@ macro_rules
 #reduce < λ x . x >
 #reduce < λ x . { Term.var (Var.zero "x") } >
 #reduce < λ x . ABCD >
+#reduce < λ x y z . y >
 
 -- https://leanprover-community.github.io/lean4-metaprogramming-book/extra/03_pretty-printing.html
 
@@ -146,10 +147,38 @@ def unexpandConst : Unexpander
 @[app_unexpander Term.lam]
 def unexpandLam : Unexpander
   | `($_ $name:str $body) =>
-    let name2 := mkIdent $ Name.mkSimple name.getString
+    let ident := mkIdent $ Name.mkSimple name.getString
     match body with
-    | `(< $inside >) => `(< λ $name2 . $inside >)
-    | _ => `(downhere)
+    | `(< λ $idents:ident* . $body2 >) => `(< λ $ident $idents* . $body2 >) -- this case handles nested lambdas
+    | `(< $inside >) => `(< λ $ident . $inside >)
+    | _ => throw ()
   | _ => throw ()
 
+@[app_unexpander Term.app]
+def unexpandApp : Unexpander
+  -- | `($_ (< $a:lambda_scope > : term) (< $b:lambda_scope > : term)) =>
+  | `($_ $a $b) =>
+    match a with
+    | `(< $a >) => match b with
+      | `(< $b >) => `(< $a $b >)
+      | _ => throw ()
+    | _ => throw ()
+  | _ => throw ()
+
+@[delab app.Term.var]
+def delabVar : Delab := do
+  -- let e <- getExpr
+  `(1)
+
 #reduce < λ x y z . ABCD >
+#reduce <A B>
+#check (Term.var (Var.zero "a"))
+#reduce <λ x . x>
+
+def foo : Nat → Nat := fun x => 42
+
+@[delab app.foo]
+def delabFoo : Delab := do
+  `(1)
+
+#check (foo) -- 1 : Nat → Nat

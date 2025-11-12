@@ -136,39 +136,55 @@ def unexpandConst : Unexpander
 
 @[app_unexpander Term.lam]
 def unexpandLam : Unexpander
-  | `($_ $name:str $body) =>
+  | `($_  $name:str $body) =>
     let ident := mkIdent $ Name.mkSimple name.getString
     match body with
     | `(< λ $idents:ident* . $body2 >) => `(< λ $ident $idents* . $body2 >) -- this case handles nested lambdas
     | `(< $inside >) => `(< λ $ident . $inside >)
-    | _ => throw ()
+    | `( $inside ) => `(< λ $ident . {$inside} >)
+    -- | _ => throw ()
   | _ => throw ()
+
+inductive ParenKind :=
+| None
+| Parens
+| Braces
+
+open ParenKind
 
 @[app_unexpander Term.app]
 def unexpandApp : Unexpander
   -- | `($_ (< $a:lambda_scope > : term) (< $b:lambda_scope > : term)) =>
   | `($_ $a_term $b_term) =>
-    match a_term with
-    | `(< $a >) => match b_term with
-      | `(< $b >) =>
+    let a_in := match a_term with
+      | `(< $a >) => a
+      | _ => TSyntax.mk Syntax.missing
+    let b_in := match b_term with
+      | `(< $b >) => b
+      | _ => TSyntax.mk Syntax.missing
         -- we need to decide when to add parentheses.
         -- if a is lambda parenth it, if b is app or lambda parenth it
-        let parena := match a_term with
-          | `(< λ $_xs:ident* . $_body:lambda_scope >) => true
-          | _ => false
-        let parenb := match b_term with
-          | `(< λ $_xs:ident* . $_body:lambda_scope >) => true
-          | `(< $_x:lambda_scope $_xs:lambda_scope >) => true
-          | _ => false
-        -- because we can only match on things and construct syntax in the term category and not
-        -- the lambda_scope category, there is no way to avoid this code repetition.
-        match parena, parenb with
-        | true, true => `(< ($a) ($b) >)
-        | true, false => `(< ($a) $b >)
-        | false, true => `(< $a ($b) >)
-        | false, false => `(< $a $b >)
-      | _ => throw ()
-    | _ => throw ()
+    let parena := match a_term with
+      | `(< λ $_xs:ident* . $_body:lambda_scope >) => Parens
+      | `(< $_any >) => None
+      | _ => Braces
+    let parenb := match b_term with
+      | `(< λ $_xs:ident* . $_body:lambda_scope >) => Parens
+      | `(< $_x:lambda_scope $_xs:lambda_scope >) => Parens
+      | `(< $_any >) => None
+      | _ => Braces
+    -- because we can only match on things and construct syntax in the term category and not
+    -- the lambda_scope category, there is no way to avoid this code repetition.
+    match parena, parenb with
+    | Parens, Parens => `(< ($a_in) ($b_in) >)
+    | Parens, None => `(< ($a_in) $b_in >)
+    | None, Parens => `(< $a_in ($b_in) >)
+    | None, None => `(< $a_in $b_in >)
+    | Braces, Braces => `(< {$a_term} {$b_term} >)
+    | Braces, Parens => `(< {$a_term} ($b_in) >)
+    | Braces, None => `(< {$a_term} $b_in >)
+    | Parens, Braces => `(< ($a_in) {$b_term} >)
+    | None, Braces => `(< $a_in {$b_term} >)
   | _ => throw ()
 
 -- @[delab app.Term.var]
@@ -192,7 +208,9 @@ def unexpandVar : Unexpander
 #reduce <(λ x . x) A>
 #reduce <(λ x y . x) (λ a b c . a (b c))>
 #reduce <λ x. {freeterm}>
+#reduce <{freeterm} A {freeterm}>
 #reduce <{123}>
+#reduce <A {freeterm}>
 
 /-
 there are things called the "parenthesizer" and "formatter"
@@ -203,7 +221,7 @@ i have gotten around the need for the parenthesizer by programming the unexpande
 insert parentheses. but it might be nicer to use a parenthesizer, and i still haven't got whitespace
 good which would require the formatter.
 
-i need to have an inversion to the {} notation for printing.
+i need to use the {} notation for printing.
 the issue is that when it comes to unexpanding and delaborating, all of the unexpanders and delaborators
 have to be based on a specific function name. but actually i want it to be more of a default case
 that can work on anything.

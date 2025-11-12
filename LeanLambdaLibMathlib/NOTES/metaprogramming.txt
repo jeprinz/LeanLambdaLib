@@ -6,3 +6,12 @@ https://leanprover-community.github.io/mathlib4_docs/Mathlib/Util/Qq.html
 
 also Qq itself: https://github.com/leanprover-community/quote4
 
+
+
+wait maybe you don't need Qq, how about:
+    https://leanprover-community.github.io/archive/stream/270676-lean4/topic/Generating.20.60Expr.60.20terms.20by.20quoting.html
+
+-----------------------------------------------------------------------------
+
+stuff i've learned about lean metaprogramming that they don't tell you in the tutorials
+- you can only construct and match syntax with `(thing $bla) notation IF IT IS IN term scope.

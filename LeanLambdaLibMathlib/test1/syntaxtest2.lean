@@ -161,7 +161,7 @@ partial def ppTermImpl (t : Q(LTerm Nat.zero)) (varnames : List String) : MetaM 
     let `(< $s1 >) <- ppTermImpl t1 varnames | `(< errorX >) -- throwError "inconcievable"
     let `(< $s2 >) <- ppTermImpl t2 varnames | `(< errorX >) -- throwError "inconcievable"
     `(< $s1 $s2 >)
-  -- | ~q(LTerm.const $how $s) => `( <werehere> )
+  -- | ~q(LTerm.const $how $s) => `( <werehere>)
   | _ =>
     let t' : Expr := t
     (match t with
@@ -180,26 +180,62 @@ partial def ppTermImpl (t : Q(LTerm Nat.zero)) (varnames : List String) : MetaM 
     | _ => `(< hereother >)
   )
 
+def varExprToNat (var : Expr) : Nat :=
+  match var with
+  | Expr.app (Expr.const `Var.zero _) _ => 0
+  | Expr.app (Expr.app (Expr.const `Var.succ _) _) i => Nat.succ (varExprToNat i)
+  | _ => 0
+
+partial def ppTermImpl2 (t : Expr) (varnames : List String) : MetaM (TSyntax `term) := do
+-- def ppTermImpl (t : Expr) (varnames : List String) : MetaM (TSyntax `term) := do
+  match t with
+  | Expr.app (Expr.app (Expr.app (Expr.const `LTerm.lam _) _) s) t =>
+    let s' : Expr := s
+    let (Expr.lit (Literal.strVal str)) := s' | `(< error1 >) -- throwError "inconcievable"
+    let `(< $s >) <- ppTermImpl2 t (str :: varnames) | `(< error2 >) -- throwError "inconcievable"
+    let name : Syntax := mkIdent $ Name.mkSimple str
+    let tname : TSyntax _ := {raw := name}
+    `(< λ $tname . $s>)
+  | Expr.app (Expr.app (Expr.const `LTerm.const _) _) s =>
+    let s' : Expr := s
+    let (Expr.lit (Literal.strVal str)) := s' | `(< errorX >) -- throwError "inconcievable"
+    let name : Syntax := mkIdent $ Name.mkSimple str
+    let tname : TSyntax _ := {raw := name}
+    `(< $tname >)
+  -- | ~q(LTerm.var $i) => `(< errorX >) -- throwError "todo"
+  | Expr.app (Expr.app (Expr.const `LTerm.var _) _) v =>
+    let i := varExprToNat v
+    let Option.some str := varnames[varnames.length - i - 1]? | throwError "oh no"
+    let name : Syntax := mkIdent $ Name.mkSimple str
+    let tname : TSyntax _ := {raw := name}
+    `(< $tname >)
+  | Expr.app (Expr.app (Expr.app (Expr.const `LTerm.app _) _) t1) t2 =>
+    let `(< $s1 >) <- ppTermImpl2 t1 varnames | `(< errorX >) -- throwError "inconcievable"
+    let `(< $s2 >) <- ppTermImpl2 t2 varnames | `(< errorX >) -- throwError "inconcievable"
+    `(< $s1 $s2 >)
+  | _ => `(< Error >)
+
 -- we can only trigger delaborators for top level things. so we need one for each constructor
 @[delab app.LTerm.app]
 def delabApp : Delab := do
   let e <- getExpr
-  ppTermImpl e []
+  ppTermImpl2 e []
 @[delab app.LTerm.lam]
 def delabLam : Delab := do
   let e <- getExpr
-  ppTermImpl e []
+  ppTermImpl2 e []
 @[delab app.LTerm.const]
 def delabConst : Delab := do
   let e <- getExpr
-  ppTermImpl e []
+  ppTermImpl2 e []
 @[delab app.LTerm.var]
 def delabVar : Delab := do
   let e <- getExpr
-  ppTermImpl e []
+  ppTermImpl2 e []
 
 #reduce <A>
 #reduce <A B>
 #reduce <A (B C)>
 #reduce <λ x . A>
 #reduce <λ x . x>
+#reduce <λ x y . x y>

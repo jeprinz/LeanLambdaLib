@@ -11,7 +11,10 @@ also Qq itself: https://github.com/leanprover-community/quote4
 wait maybe you don't need Qq, how about:
     https://leanprover-community.github.io/archive/stream/270676-lean4/topic/Generating.20.60Expr.60.20terms.20by.20quoting.html
 
+sebastian ulrich saying that lean4 has no way to quote exprs: https://proofassistants.stackexchange.com/questions/1055/what-provers-are-using-quote-quotations-or-quasiquotations
+
 -----------------------------------------------------------------------------
 
 stuff i've learned about lean metaprogramming that they don't tell you in the tutorials
 - you can only construct and match syntax with `(thing $bla) notation IF IT IS IN term scope.
+- Qq is not actually good enough, because dependent types in the Q() causes problems.

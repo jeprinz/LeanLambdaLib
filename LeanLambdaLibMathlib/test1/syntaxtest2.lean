@@ -128,48 +128,78 @@ def elabTerm : TermElab := fun stx typ? => do
 #reduce < λ x . x >
 #reduce < λ x . ABCD >
 #reduce < λ x y z . y >
+#reduce <A B>
 
 -- TODO: this syntax should actually apply to the quotiented terms instead of the deep embedding.
 -- i do need to make sure that the pretty-printing can work with this encoding though
 
 -- the Nat.zero is just a dummy to make it stop complaining about type errors
--- def ppTermImpl (t : Q(LTerm Nat.zero)) (varnames : List String) : MetaM (TSyntax `term) := do
-def ppTermImpl (t : Expr) (varnames : List String) : MetaM (TSyntax `term) := do
-  `(yesyesyes)
-  -- match t with
-  -- | ~q(LTerm.lam $s $t) => `(here3)
-  -- | ~q(LTerm.const $s:str) => `(here1)
-  --   -- let s' : Expr := s
-  --   -- match s' with
-  --   -- | Expr.lit _sadf => `(is literal)
-  --   -- | _ => `(is not literal)
-  -- | ~q(LTerm.var $i) => `(here2)
-  --   -- do
-  --   --   -- let str:= x.getString
-  --   --   let str:= "example"
-  --   --   let name : Syntax := mkIdent $ Name.mkSimple str
-  --   --   let tname : TSyntax _ := {raw := name}
-  --   --   `(< $tname >)
-  -- | ~q(LTerm.app $t1 $t2) => `(here4)
+partial def ppTermImpl (t : Q(LTerm Nat.zero)) (varnames : List String) : MetaM (TSyntax `term) := do
+-- def ppTermImpl (t : Expr) (varnames : List String) : MetaM (TSyntax `term) := do
+  match t with
+  | ~q(LTerm.lam $s $t) => do
+    let s' : Expr := s
+    let (Expr.lit (Literal.strVal str)) := s' | `(< error1 >) -- throwError "inconcievable"
+    let `(< $s >) <- ppTermImpl t (str :: varnames) | `(< error2 >) -- throwError "inconcievable"
+    let name : Syntax := mkIdent $ Name.mkSimple str
+    let tname : TSyntax _ := {raw := name}
+    `(< λ $tname . $s>)
+  | ~q(LTerm.const $s) => do
+    let s' : Expr := s
+    let (Expr.lit (Literal.strVal str)) := s' | `(< errorX >) -- throwError "inconcievable"
+    let name : Syntax := mkIdent $ Name.mkSimple str
+    let tname : TSyntax _ := {raw := name}
+    `(< $tname >)
+  | ~q(LTerm.var $i) => `(< errorX >) -- throwError "todo"
+    -- do
+    --   -- let str:= x.getString
+    --   let str:= "example"
+    --   let name : Syntax := mkIdent $ Name.mkSimple str
+    --   let tname : TSyntax _ := {raw := name}
+    --   `(< $tname >)
+  | ~q(LTerm.app $t1 $t2) => do
+    let `(< $s1 >) <- ppTermImpl t1 varnames | `(< errorX >) -- throwError "inconcievable"
+    let `(< $s2 >) <- ppTermImpl t2 varnames | `(< errorX >) -- throwError "inconcievable"
+    `(< $s1 $s2 >)
+  -- | ~q(LTerm.const $how $s) => `( <werehere> )
+  | _ =>
+    let t' : Expr := t
+    (match t with
+    | Expr.app l r => (
+      match l with
+      | Expr.app l2 _ => (
+        match l2 with
+        | Expr.const name _ =>
+          let ident : Syntax := mkIdent $ name
+          let tname : TSyntax _ := {raw := ident}
+          `( <constthatis $tname> )
+        | _ => `(< catchall >)
+      )
+      | _ => `(< lother >)
+    )
+    | _ => `(< hereother >)
+  )
 
 -- we can only trigger delaborators for top level things. so we need one for each constructor
-@[delab app.Term.app]
+@[delab app.LTerm.app]
 def delabApp : Delab := do
   let e <- getExpr
   ppTermImpl e []
-@[delab app.Term.lam]
+@[delab app.LTerm.lam]
 def delabLam : Delab := do
   let e <- getExpr
   ppTermImpl e []
-@[delab app.Term.const]
+@[delab app.LTerm.const]
 def delabConst : Delab := do
   let e <- getExpr
   ppTermImpl e []
-@[delab app.Term.var]
+@[delab app.LTerm.var]
 def delabVar : Delab := do
   let e <- getExpr
   ppTermImpl e []
 
 #reduce <A>
 #reduce <A B>
+#reduce <A (B C)>
+#reduce <λ x . A>
 #reduce <λ x . x>

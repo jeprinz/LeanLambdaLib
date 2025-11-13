@@ -205,10 +205,16 @@ partial def ppTermImpl2 (t : Expr) (varnames : List String) : MetaM (TSyntax `te
   -- | ~q(LTerm.var $i) => `(< errorX >) -- throwError "todo"
   | Expr.app (Expr.app (Expr.const `LTerm.var _) _) v =>
     let i := varExprToNat v
-    let Option.some str := varnames[varnames.length - i - 1]? | throwError "oh no"
-    let name : Syntax := mkIdent $ Name.mkSimple str
-    let tname : TSyntax _ := {raw := name}
-    `(< $tname >)
+    match varnames[varnames.length - i - 1]? with
+    | Option.some str =>
+      let name : Syntax := mkIdent $ Name.mkSimple str
+      let tname : TSyntax _ := {raw := name}
+      `(< $tname >)
+    | Option.none =>
+      let str := "freevar".append i.toSubscriptString
+      let name : Syntax := mkIdent $ Name.mkSimple str
+      let tname : TSyntax _ := {raw := name}
+      `(< $tname >)
   | Expr.app (Expr.app (Expr.app (Expr.const `LTerm.app _) _) t1) t2 =>
     let `(< $s1 >) <- ppTermImpl2 t1 varnames | `(< errorX >) -- throwError "inconcievable"
     let `(< $s2 >) <- ppTermImpl2 t2 varnames | `(< errorX >) -- throwError "inconcievable"
@@ -233,9 +239,11 @@ def delabVar : Delab := do
   let e <- getExpr
   ppTermImpl2 e []
 
+-- see syntaxtest.lean for how to fix parenthesization
 #reduce <A>
 #reduce <A B>
 #reduce <A (B C)>
 #reduce <λ x . A>
 #reduce <λ x . x>
 #reduce <λ x y . x y>
+#reduce (LTerm.var Var.zero : LTerm (Nat.succ Nat.zero))

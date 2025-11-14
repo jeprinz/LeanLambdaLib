@@ -668,6 +668,8 @@ inductive StepEta : ∀{Γ}, Term Γ → Term Γ → Prop where
  -- The idea to use subsitution here is from Nipkow 2001
   zFree M
   → StepEta (lam s (app M (var Var.zero))) (subLast M dummy)
+| alpha : ∀{Γ s1 s2} {M : Term (succ Γ)},
+  StepEta (lam s1 M) (lam s2 M)
 
 theorem etaRename {Γ} {M M' : Term Γ}
   (p : StepEta M M')
@@ -676,6 +678,7 @@ theorem etaRename {Γ} {M M' : Term Γ}
   | lam _p ih => intros; simp [rename]; apply StepEta.lam; apply ih
   | app1 _p ih => intros; simp [rename]; apply StepEta.app1; apply ih
   | app2 _p ih => intros; simp [rename]; apply StepEta.app2; apply ih
+  | alpha => intros; simp [rename]; apply StepEta.alpha
   | @eta _ _ M zf => -- surely I could have written this proof better...
     intro Δ ren
     simp [rename]
@@ -725,6 +728,7 @@ theorem substEta {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
   | StepEta.app1 p => StepEta.app1 (substEta p)
   | StepEta.app2 p => StepEta.app2 (substEta p)
   | StepEta.lam p => StepEta.lam (substEta p)
+  | StepEta.alpha => StepEta.alpha
   | @StepEta.eta _ _ M zf => by
     simp [subst]
     simp [subLast]
@@ -825,6 +829,7 @@ theorem stepEtaZFree {n1 n2} {M N : Term n2} (step : StepEta M N) {ren : Ren n1 
       rw [p]
       rfl
       ) ⟩
+  | StepEta.alpha => Iff.mp lamRenFree (Iff.mpr lamRenFree rf)
 
 theorem stepZFree {n1 n2} {M N : Term n2} (step : Step M N) {ren : Ren n1 n2}
   (rf : renFree ren M) : renFree ren N :=
@@ -885,6 +890,11 @@ theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
     ⟨_, Or.inr (StepEta.eta (stepEtaZFree s zf)), Or.inr (substEta s)⟩
   | StepEta.eta zf, StepEta.lam (StepEta.app1 s) => -- REPEATED CASE
     ⟨_, Or.inr (substEta s), Or.inr (StepEta.eta (stepEtaZFree s zf))⟩
+  | @StepEta.alpha _ _ s M, StepEta.alpha => ⟨lam s M, Or.inr StepEta.alpha, Or.inr StepEta.alpha⟩
+  | StepEta.alpha, StepEta.lam s => ⟨_, Or.inr (StepEta.lam s), Or.inr StepEta.alpha⟩
+  | StepEta.lam s, StepEta.alpha => ⟨_, Or.inr StepEta.alpha, Or.inr (StepEta.lam s)⟩
+  | StepEta.alpha, StepEta.eta zf => ⟨_, Or.inr (StepEta.eta zf), Or.inl rfl⟩
+  | StepEta.eta zf, StepEta.alpha => ⟨_, Or.inl rfl, Or.inr (StepEta.eta zf)⟩
 
 theorem betaEtaCommuteProperty {Γ}
   : square (@Step Γ) (@StepEta Γ) (closure (@StepEta Γ)) (closeRef (@Step Γ)) :=
@@ -917,24 +927,24 @@ theorem betaEtaCommuteProperty {Γ}
         )⟩
     | Step.lam (Step.app1 p), StepEta.eta zf => ⟨_, oneStep (StepEta.eta (stepZFree p zf)), Or.inr (substStep p)⟩
     | Step.lam Step.beta, @StepEta.eta _ _ (lam s a) zf =>
-      ⟨_, closure.refl, Or.inl (by
-        --
+      ⟨_,
+        oneStep (@StepEta.alpha _ _ s _),
+        Or.inl (by
         apply Exists.elim; apply (Iff.mpr lamRenFree zf); intro t proof
-        -- rw [<- proof]
         simp [subLast, subst]
         rw [<- proof]
         rw [renameSubst]
         rw [renameSubst]
-        apply And.intro
-        . sorry -- TODO: this is where we will need alpha
-        . apply congrArg (fun sub => subst sub _)
-          apply funext
-          intro x
-          exact (match x with
-          | Var.zero => rfl
-          | Var.succ Var.zero => rfl
-          | Var.succ (Var.succ x') => rfl
-          ))⟩
+        apply congrArg (fun sub => subst sub _)
+        apply funext
+        intro x
+        exact (match x with
+        | Var.zero => rfl
+        | Var.succ Var.zero => rfl
+        | Var.succ (Var.succ x') => rfl
+        ))⟩
+    | Step.beta, StepEta.app1 StepEta.alpha => ⟨_, closure.refl, Or.inr (Step.beta)⟩
+    | Step.lam s, StepEta.alpha => ⟨_, oneStep StepEta.alpha, Or.inr (Step.lam s)⟩
 
 --------------------------------------------------------------------------------
 ---------- Equivalence between Par and Step ------------------------------------

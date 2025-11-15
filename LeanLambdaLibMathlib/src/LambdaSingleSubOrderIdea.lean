@@ -1,462 +1,263 @@
 -- This file is a translation of PLFA
-
--- https://leanprover.github.io/theorem_proving_in_lean4/inductive_types.html
-
 --------------------------------------------------------------------------------
----------- This section came from Untyped.agda in plfa -------------------------
 --------------------------------------------------------------------------------
 
-def Context := Nat
-open Nat
+-- in this version, i'm trying this idea:
+-- i don't know if this will actually work, but what if i have an idea of bringing things into
+-- a normal form, where the subst and lifts are in order of increasing index.
+-- and all lifts are inside all substs.
+import Mathlib.Tactic.Ring.RingNF
+import Mathlib.Data.Nat.Basic
+import Lean.Elab.Tactic.Omega
 
-inductive Var : Context → Type
-| zero : ∀ {Γ}, Var (succ Γ)
-| succ : ∀ {Γ}, Var Γ → Var (succ Γ)
+open Classical
 
-theorem noVarZero : Var zero → False := by
-  intro x
-  cases x
 
 inductive Constant
 | strConst : String -> Constant
 
-inductive Term : Context → Type
-| var : ∀ {Γ}, Var Γ → Term Γ
-| const : ∀ {Γ}, Constant → Term Γ
-| lam : ∀ {Γ}, String -> Term (succ Γ) → Term Γ
-| app : ∀ {Γ}, Term Γ → Term Γ → Term Γ
+inductive Term : Type
+| var : Nat → Term
+| const : Constant → Term
+| lam : String -> Term → Term
+| app : Term → Term → Term
 
 open Term
 
-def Ren (n1 n2 : Context) : Type := Var n1 → Var n2
-
-def ext {n1 n2} (ren1 : Ren n1 n2) : (Ren (succ n1) (succ n2))
-  := fun x => match x with
-              | Var.zero => Var.zero
-              | Var.succ x' => Var.succ (ren1 x')
-
-def rename {n1 n2} (ren : Ren n1 n2) (t : Term n1) : Term n2 :=
+def lift (k : Nat) (t : Term) : Term :=
   match t with
-  | var i => var (ren i)
+  | var i => if i >= k then Term.var (Nat.succ i) else Term.var i
   | const c => const c
-  | lam s t => lam s (rename (ext ren) t)
-  | app t1 t2 => app (rename ren t1) (rename ren t2)
+  | lam s t => lam s (lift (Nat.succ k) t)
+  | app t1 t2 => app (lift k t1) (lift k t2)
 
-def Subst (n1 n2 : Context) : Type := Var n1 → Term n2
-
-def exts {n1 n2} (sub : Subst n1 n2) : Subst (succ n1) (succ n2) :=
-  fun x => match x with
-           | Var.zero => var Var.zero
-           | Var.succ x' => rename Var.succ (sub x')
-
-def subst {n1 n2} (sub : Subst n1 n2) (t : Term n1) : Term n2 :=
+def subst (k : Nat) (toSub : Term) (t : Term) : Term :=
   match t with
-  | var i => sub i
+  | var i => if k < i then Term.var (Nat.pred i) else if i == k then toSub else Term.var i
   | const c => const c
-  | lam s t => lam s (subst (exts sub) t)
-  | app t1 t2 => app (subst sub t1) (subst sub t2)
+  | lam s t => lam s (subst (Nat.succ k) (lift 0 toSub) t)
+  | app t1 t2 => app (subst k toSub t1) (subst k toSub t2)
 
-def substZero {Γ} (t : Term Γ) : Subst (succ Γ) Γ :=
-  fun x => match x with
-           | Var.zero => t
-           | Var.succ x' => var x'
-
-def subLast {n} (t1 : Term (succ n)) (t2 : Term n) : Term n :=
-  subst (substZero t2) t1
-
-inductive Step : ∀{Γ}, Term Γ → Term Γ → Prop where
-| app1 : ∀ {Γ} {L L' M : Term Γ},
+inductive Step : Term → Term → Prop where
+| app1 : ∀{L L' M : Term},
     Step L L'
     → Step (app L M) (app L' M)
-
-| app2 : ∀ {Γ} {L M M' : Term Γ},
+| app2 : ∀{L M M' : Term},
     Step M M'
     → Step (app L M) (app L M')
-
-| beta : ∀ {Γ s} {N : Term (succ Γ)} {M : Term Γ},
-    Step (app (lam s N) M) (subLast N M)
-
-| lam : ∀ {Γ s} {N N' : Term (succ Γ)},
+| beta : ∀ {s} {N : Term} {M : Term},
+    Step (app (lam s N) M) (subst 0 N M)
+| lam : ∀ {s} {N N' : Term},
     Step N N' → Step (lam s N) (lam s N')
 
--- infix:50 " ==> " => Step
-
-inductive MultiStep : ∀ {Γ}, Term Γ → Term Γ → Type
-| halt : ∀ {Γ} {t : Term Γ}, MultiStep t t
-| step : ∀ {Γ} {t1 t2 t3 : Term Γ},
-  Step t1 t2 → MultiStep t2 t3 → MultiStep t1 t3
-
--- infix:50 " ~>> " => MultiStep
--- infix:50 " ~>> " => MultiStep
-
-def multiTrans {Γ} {L M N : Term Γ}
-  (s1 : MultiStep L M) (s2 : MultiStep M N) : MultiStep L N :=
-  match s1 with
-  | MultiStep.halt => s2
-  | MultiStep.step s steps => MultiStep.step s (multiTrans steps s2)
-
-def appLCong {Γ} {L L' M : Term Γ}
-  (m : MultiStep L L') : MultiStep (app L M) (app L' M) :=
-  match m with
-  | MultiStep.halt => MultiStep.halt
-  | MultiStep.step s steps => MultiStep.step (Step.app1 s) (appLCong steps)
-
-def appRCong {Γ} {L M M' : Term Γ}
-  (m : MultiStep M M') : MultiStep (app L M) (app L M') :=
-  match m with
-  | MultiStep.halt => MultiStep.halt
-  | MultiStep.step s steps => MultiStep.step (Step.app2 s) (appRCong steps)
-
-def appCong {n} {L L' M M' : Term n}
-  (m1 : MultiStep L L') (m2 : MultiStep M M') : MultiStep (app L M) (app L' M') :=
-  multiTrans (appLCong m1) (appRCong m2)
-
-def lamCong {Γ s} {M M' : Term (succ Γ)}
-  (m : MultiStep M M') : MultiStep (lam s M) (lam s M') :=
-  match m with
-  | MultiStep.halt => MultiStep.halt
-  | MultiStep.step s steps => MultiStep.step (Step.lam s) (lamCong steps)
-
 --------------------------------------------------------------------------------
----------- This section came from Subsitution.agda in plfa ---------------------
 --------------------------------------------------------------------------------
 
--- The substitution algebra; all substitution can be built using these
-def ids {Γ} : Subst Γ Γ := var
-
-def shift {Γ} : Subst Γ (succ Γ) :=
-  fun x => var (Var.succ x)
-
-def cons {Γ Δ} (t : Term Δ) (sub : Subst Γ Δ) : Subst (succ Γ) Δ :=
-  fun x => match x with
-    | Var.zero => t
-    | Var.succ x' => sub x'
-
-def compose {n1 n2 n3} : Subst n1 n2 → Subst n2 n3 → Subst n1 n3 :=
-  fun sub1 sub2 => subst sub2 ∘ sub1
-
-def renToSub {Γ Δ} : Ren Γ Δ → Subst Γ Δ :=
-  fun ren => ids ∘ ren
-
-theorem subIdL {Γ Δ} {sub : Subst Γ Δ} : compose ids sub = sub :=
-  by apply funext
-     intro x
-     rfl
-
-
-theorem subDist {n1 n2 n3} {sub1 : Subst n1 n2} {sub2 : Subst n2 n3} {M : Term n2}
-  : (compose (cons M sub1) sub2) = (cons (subst sub2 M) (compose sub1 sub2)) :=
-  by apply funext
-     intro x
-     cases x
-     . rfl
-     . rfl
-
-theorem renExt {n1 n2} {ren : Ren n1 n2} : renToSub (ext ren) = exts (renToSub ren) := by
-  apply funext
-  intro x
-  cases x
-  . rfl
-  . rfl
-
-
-theorem renameSubstRen {n1 n2} {ren : Ren n1 n2} {M : Term n1}
-  : rename ren M = subst (renToSub ren) M := by
-  cases M
-  . rfl
-  . rfl
-  . simp [rename, subst]; rw [(Eq.symm renExt)]; apply renameSubstRen
-  . simp [subst, rename]
-    apply And.intro
-    . apply renameSubstRen
-    . apply renameSubstRen
-
-theorem extsConsShift {n1 n2} {sub : Subst n1 n2}
-  : exts sub = cons (var Var.zero) (compose sub shift) := by
-  apply funext
-  intros x
-  cases x
-  . rfl
-  . apply renameSubstRen
-
-theorem substZConsIds {Γ} {M : Term Γ} : substZero M = (cons M ids) := by
-  apply funext
-  intro x
-  cases x
-  . rfl
-  . rfl
-
-theorem extsIds {Γ} : exts ids = @ids (succ Γ) := by
-  apply funext
-  intro x
-  cases x
-  . rfl
-  . rfl
-
-theorem subId {Γ} {M : Term Γ} : subst ids M = M := by
-  induction M
-  . rfl
-  . rfl
-  . simp [subst]
-    rw [extsIds]
-    assumption
-  . simp [subst]
-    apply And.intro
-    . assumption
-    . assumption
-
-theorem renameId {Γ} {M : Term Γ} : rename (fun x => x) M = M := by
-  rw [renameSubstRen]
-  apply subId
-
-theorem subIdR {Γ Δ} {sub : Subst Γ Δ} : (compose sub ids) = sub := by
-  apply funext
-  intro x
-  apply subId
-
-theorem composeExt {n1 n2 n3} {ren2 : Ren n2 n3} {ren1 : Ren n1 n2}
-  : (ext ren2) ∘ (ext ren1) = ext (ren2 ∘ ren1) := by
-  apply funext
-  intro x
-  cases x
-  . rfl
-  . rfl
-
-theorem composeRename {n1} {M : Term n1}
-  : ∀ {n2 n3} {ren : Ren n2 n3} {ren' : Ren n1 n2},
-    rename ren (rename ren' M) = rename (ren ∘ ren') M := by
-  induction M with
-  | var x => intros; rfl
-  | const c => intros; rfl
+theorem lift_lift (i1 i2 : Nat) (t : Term) (H : i2 < i1) :
+    lift i1 (lift i2 t) = lift i2 (lift (Nat.pred i1) t) := by
+  revert i1 i2
+  induction t with
+  | var i =>
+    intros
+    repeat (first | simp [lift] | split | cutsat)
+  | const c =>
+    intros
+    simp [lift]
   | lam s t ih =>
-    intros n2 n3 ren ren'
-    simp [rename]
-    rw [← composeExt]
-    apply (@ih (succ n2) (succ n3) (ext ren) (ext ren'))
+    intros
+    simp [lift]
+    rw [ih] <;> try cutsat
+    repeat (first | simp | split | cutsat | contradiction)
   | app t1 t2 ih1 ih2 =>
     intros
-    simp [rename]
-    apply And.intro
-    . apply ih1
-    . apply ih2
+    simp [lift]
+    rw [ih1, ih2]
+    repeat (first | simp | split | cutsat | contradiction)
 
--- This is a helper used in commuteSubstRename, but seemingly lean has problems if I put its definition in there with the let tactic.
--- It seems that lean can't simp by locally defined definitions?
-def ren' {ren : {Γ : Context} → Ren Γ (Nat.succ Γ)}
-  : ∀{Γ}, Ren Γ (succ Γ) := fun {Γ} => match Γ with
-  | Nat.zero => fun y => False.rec _ (noVarZero y)
-  | Nat.succ _x' => ext ren
-
-theorem commuteSubstRename {Γ} {M : Term Γ}
-  : ∀ {Δ} {sub : Subst Γ Δ}
-  {ren : ∀{Γ}, Ren Γ (succ Γ)},
-   (r : ∀{x : Var Γ}, exts sub (ren x) = rename ren (sub x))
-  → subst (exts sub) (rename ren M) = rename ren (subst sub M) := by
-  induction M with
-  | var x => intro Δ sub ren r; apply r
-  | const x => intros; rfl
+theorem lift_subst (i1 i2 : Nat) (t1 t : Term) :
+    lift i1 (subst i2 t1 t) =
+      if i1 < i2
+        then subst (Nat.succ i2) (lift i1 t1) (lift i1 t)
+        else subst i2 (lift i1 t1) (lift (Nat.succ i1) t) := by
+  revert i1 i2 t1
+  induction t with
+  | var i =>
+    intros
+    repeat (first | simp [subst, lift] | split | cutsat | contradiction)
+  | const c =>
+    intros
+    simp [subst, lift]
   | lam s t ih =>
-    intro Δ sub ren r
-    simp [subst, rename]
-    apply (@ih _ (exts sub) ren')
-    simp [ren']
-    intro x
-    cases x with
-    | zero => rfl
-    | succ y =>
-      simp [ext, exts]
-      simp [exts] at r
-      rw [r]
-      simp [composeRename]
-      rfl
+    intros
+    simp [subst, lift]
+    rw [ih]
+    simp
+    rw [lift_lift]
+    repeat (first | simp | split | cutsat | contradiction)
   | app t1 t2 ih1 ih2 =>
-    intro Δ sub ren r
-    simp [subst, rename]
-    apply And.intro
-    . apply (ih1 r)
-    . apply (ih2 r)
+    intros
+    simp [subst, lift]
+    rw [ih1, ih2]
+    repeat (first | simp | split | cutsat | contradiction)
 
-theorem extsSeq {Γ Δ Δ'} {sub1 : Subst Γ Δ} {sub2 : Subst Δ Δ'}
-  : compose (exts sub1) (exts sub2) = exts (compose sub1 sub2) := by
-  apply funext
-  intro x
-  cases x with
-  | zero => rfl
-  | succ y =>
-    simp [compose]
-    simp [exts]
-    rw [<- commuteSubstRename]
-    simp [exts]
+theorem subst_lift (i : Nat) (t1 t2 : Term) : subst i t1 (lift i t2) = t2 := by
+  revert i t1
+  induction t2 with
+  | var i =>
+    intros
+    repeat (first | simp [subst, lift] | split | cutsat | contradiction)
+  | const c =>
+    intros
+    simp [subst, lift]
+  | lam s t ih =>
+    intros
+    simp [subst, lift]
+    rw [ih]
+  | app t1 t2 ih1 ih2 =>
+    intros
+    simp [subst, lift]
+    rw [ih1, ih2]
+    repeat (first | simp | split | cutsat | contradiction)
 
-theorem subSub {n1} {M : Term n1}
-  : ∀ {n2 n3} {sub1 : Subst n1 n2} {sub2 : Subst n2 n3},
-  subst sub2 (subst sub1 M) = subst (compose sub1 sub2) M := by
-    induction M with
-    | var i => intros; rfl
-    | const c => intros; rfl
-    | app t1 t2 ih1 ih2 =>
-        intros
-        simp [subst]
-        apply And.intro
-        apply ih1
-        apply ih2
-    | lam s t ih =>
-        intros
-        --
-        simp [subst]
-        rw [ih]
-        rw [extsSeq]
+theorem subst_lift_off_by_1 (i1 i2 : Nat) (t1 t : Term) (H : i1 = i2 + 1) :
+    subst i1 t1 (lift i2 t) = subst i2 t1 (lift i1 t) := by
+  revert i1 i2 H t1
+  induction t with
+  | var i =>
+    intros
+    repeat (first | simp [subst, lift] | split | cutsat | contradiction)
+  | const c =>
+    intros
+    simp [subst, lift]
+  | lam s t ih =>
+    intros
+    simp [subst, lift]
+    rw [ih]
+    cutsat
+  | app t1 t2 ih1 ih2 =>
+    intros
+    simp [subst, lift]
+    rw [ih1, ih2]
+    repeat (first | simp | split | cutsat | contradiction)
 
-theorem renameSubst {Γ Δ Δ' : Context} {M : Term Γ} {ren : Ren Γ Δ} {sub : Subst Δ Δ'}
-  : subst sub (rename ren M) = subst (sub ∘ ren) M := by
-  rw [renameSubstRen]
-  simp [subSub]
-  rfl
+-- theorem subst_subst (i1 i2 : Nat) (t1 t2 t : Term) (H : i1 < i2) : subst i1 t1 (subst i2 t2 t) =
+--       subst (Nat.pred i2) (subst i1 t1 t2) (subst i1 (lift (Nat.pred i2) t1) t) := by
+--   revert i1 i2 t1 t2
+--   induction t with
+--   | var i =>
+--     intros
+--     repeat' (first | simp [subst] | split | cutsat | contradiction | rw [subst_lift])
+--   | const c =>
+--     intros
+--     simp [subst]
+--   | lam s t ih =>
+--     intros
+--     simp [subst]
+--     -- how do i only do the rewrite if the assumption is proven by another tactic?
+--     rw [ih] <;> try cutsat
+--     simp
+--     rw [lift_lift] <;> try cutsat
+--     rw [lift_subst]
+--     repeat' (first | simp | split | cutsat | contradiction)
+--     rw [subst_lift_off_by_1] <;> cutsat
+--     --
+--   | app t1 t2 ih1 ih2 =>
+--     intros
+--     simp [subst]
+--     rw [ih1, ih2]
+--     repeat (first | simp | split | cutsat | contradiction)
 
-def bloo {n : Nat} : Nat := n
-
-theorem subAssoc {n1 n2 n3 n4} {sub1 : Subst n1 n2} {sub2 : Subst n2 n3}
-  {sub3 : Subst n3 n4}
-  : compose (compose sub1 sub2) sub3 = compose sub1 (compose sub2 sub3) := by
-  --
-  apply funext
-  intro x
-  simp [compose]
-  apply subSub
-
-theorem subTail {n1 n2} {M : Term n2} {sub : Subst n1 n2}
-  : compose shift (cons M sub) = sub := by
-  apply funext
-  intros x
-  rfl
-
--- probably don't need this?
-theorem renSuccShift {n}
-  : renToSub (Var.succ) = @shift n := by
-  -- apply funext
-  -- intro x
-  rfl
-
-theorem substZeroSub {n1 n2} {M : Term n1} {sub : Subst n1 n2}
-  : (compose (exts sub) (substZero (subst sub M))) = (compose (substZero M) sub) := by
-    rw [extsConsShift]
-    rw [substZConsIds]
-    rw [substZConsIds]
-    rw [subDist]
-    rw [subDist]
-    rw [subIdL]
-    rw [subAssoc]
-    rw [subTail]
-    rw [subIdR]
-    rfl
-
-theorem substCommute {n1 n2} {N : Term (succ n1)} {M : Term n1} {sub : Subst n1 n2}
-  : subLast (subst (exts sub) N) (subst sub M)
-    = subst sub (subLast N M) := by
-  simp [subLast]
-  -- rw [extsConsShift]
-  -- rw [substZConsIds]
-  -- rw [substZConsIds]
-  rw [subSub, subSub]
-  rw [substZeroSub]
-
-theorem renameSubstCommute {Γ Δ} {N : Term (succ Γ)} {M : Term Γ} {ren : Ren Γ Δ}
-  : subLast (rename (ext ren) N) (rename ren M) = rename ren (subLast N M) := by
-  rw [renameSubstRen]
-  rw [renameSubstRen]
-  rw [renameSubstRen]
-  rw [renExt]
-  rw [substCommute]
+-- IDEA: maybe the substs should go in decreasing order, so that they can cancel the lifts?
+theorem subst_subst (i1 i2 : Nat) (t1 t2 t : Term) (H : i1 >= i2) :
+    subst i1 t1 (subst i2 t2 t) =
+      subst i2 (subst i1 t1 t2) (subst (Nat.succ i1) (lift i2 t1) t) := by
+  revert i1 i2 t1 t2
+  induction t with
+  | var i =>
+    intros
+    repeat' (first | simp [subst] | split | cutsat | contradiction | rw [subst_lift])
+  | const c =>
+    intros
+    simp [subst]
+  | lam s t ih =>
+    intros
+    simp [subst]
+    rw [ih] <;> try cutsat
+    simp
+    rw [lift_lift] <;> try cutsat
+    rw [lift_subst]
+    repeat' (first | simp | split | cutsat )
+    rewrite [subst_lift_off_by_1] <;> cutsat
+  | app t1 t2 ih1 ih2 =>
+    intros
+    simp [subst]
+    rw [ih1, ih2]
+    repeat (first | simp | split | cutsat | contradiction)
 
 --------------------------------------------------------------------------------
 ---------- A proof of confluence -----------------------------------------------
 --------------------------------------------------------------------------------
 
-inductive Par : ∀{Γ}, Term Γ → Term Γ → Prop
-| pvar : ∀{Γ} {x : Var Γ}, Par (var x) (var x)
-| pconst : ∀{Γ} {c : Constant}, @Par Γ (const c) (const c)
-| plam : ∀{Γ s} {N N' : Term (succ Γ)},
+inductive Par : Term → Term → Prop
+| pvar : ∀{x : Nat}, Par (var x) (var x)
+| pconst : ∀{c : Constant}, Par (const c) (const c)
+| plam : ∀{s} {N N' : Term},
   Par N N' → Par (lam s N) (lam s N')
-| papp : ∀{Γ}{L L' M M' : Term Γ},
+| papp : ∀{L L' M M' : Term},
   Par L L' → Par M M' → Par (app L M) (app L' M')
-| pbeta : ∀{Γ s} {N N' : Term (succ Γ)} {M M' : Term Γ},
-  Par N N' → Par M M' → Par (app (lam s N) M) (subLast N' M')
+| pbeta : ∀{s} {N N' : Term} {M M' : Term},
+  Par N N' → Par M M' → Par (app (lam s N) M) (subst 0 M' N')
 
-def ParSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Prop :=
-  {x : Var Γ} → Par (sub1 x) (sub2 x)
+theorem parRefl {t : Term} : Par t t := by
+  induction t <;> constructor <;> repeat assumption
 
-theorem parRename {Γ} {M M' : Term Γ}
+theorem parLift {i} {M M' : Term}
   (p : Par M M')
-  : ∀{Δ}, {ren : Ren Γ Δ} → Par (rename ren M) (rename ren M') := by
+  : Par (lift i M) (lift i M') := by
+  revert i
   induction p with
-  | pvar => intros; simp [rename]; apply Par.pvar
-  | pconst => intros; simp [rename]; apply Par.pconst
-  | plam _p ih => intros; simp [rename]; apply Par.plam; apply ih
-  | papp _p1 _p2 ih1 ih2 => intros; simp [rename]; apply Par.papp; apply ih1; apply ih2
+  | @pvar x => intros; simp [lift]; split<;> apply Par.pvar
+  | pconst => intros; constructor
+  | plam _p ih => intros; simp [lift]; apply Par.plam; apply ih
+  | papp _p1 _p2 ih1 ih2 => intros; simp [lift]; apply (Par.papp ih1 ih2)
   | pbeta _p1 _p2 ih1 ih2 =>
     intros
-    simp [rename]
-    rw [<- renameSubstCommute]
+    simp [lift]
+    rw [lift_subst]
     apply Par.pbeta
-    apply ih1
-    apply ih2
+    · apply ih1
+    · apply ih2
 
-theorem parSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
-  (ps : ParSubst sub1 sub2)
-  : ParSubst (exts sub1) (exts sub2) := by
-  intro x
-  cases x
-  . apply Par.pvar
-  . apply parRename; apply ps
-
-theorem substPar {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M M' : Term Γ}
-  (ps : ParSubst sub1 sub2) (p : Par M M')
-  : Par (subst sub1 M) (subst sub2 M') :=
-  match p with
-  | Par.pvar => ps
-  | Par.pconst => by simp [subst]; constructor
-  | Par.papp p1 p2 => Par.papp (substPar ps p1) (substPar ps p2)
-  | Par.pbeta p1 p2 => by
-    rw [<- substCommute]
+theorem parSubst {i} {N N'} {M M' : Term}
+  (p1 : Par N N')
+  (p2 : Par M M')
+  : Par (subst i N M) (subst i N' M') := by
+  revert i N N'
+  induction p2 with
+  | @pvar x =>
+    intros; simp [subst]; split
+    · apply parRefl
+    · split
+      · assumption
+      · apply parRefl
+  | pconst => intros; constructor
+  | plam _p ih =>
+    intros i N N' pNN'
+    simp [subst]; apply Par.plam; apply ih
+    apply parLift
+    apply pNN'
+  | papp _p1 _p2 ih1 ih2 =>
+    intros i N N' pNN'
+    simp [subst]; apply (Par.papp (ih1 pNN') (ih2 pNN'))
+  | @pbeta s a a' b b' _p1 _p2 ih1 ih2 =>
+    intros i N N' pNN'
+    rw [subst_subst] <;> try cutsat
+    simp [subst]
     apply Par.pbeta
-    apply substPar
-    apply parSubstExts
-    apply ps
-    apply p1
-    apply substPar
-    apply ps
-    apply p2
-  | Par.plam p => by
-    apply Par.plam
-    apply substPar
-    apply parSubstExts
-    apply ps
-    apply p
+    · apply (ih1 (parLift pNN'))
+    · apply (ih2 pNN')
 
-def parSubstZero {Γ} {M M' : Term Γ}
-  (p : Par M M') : ParSubst (substZero M) (substZero M')
-  := fun {x} =>
-    match x with
-    | Var.zero => p
-    | Var.succ _x' => Par.pvar
-
-theorem subPar {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
-  (p1 : Par N N') (p2 : Par M M')
-  : Par (subLast N M) (subLast N' M') :=
-  substPar (parSubstZero p2) p1
-
-theorem parRefl {Γ} {M : Term Γ} : Par M M := by
-  induction M with
-  | var i => apply Par.pvar
-  | const c => apply Par.pconst
-  | app t1 t2 ih1 ih2 => apply Par.papp; apply ih1; apply ih2
-  | lam s t ih => apply Par.plam; apply ih
-
--- While on paper the Takahashi method leads to a cleaner proof, in a theorem prover the proof
--- will be ugly either way and this way is shorter.
--- Also, using a takahashi function for beta-eta together seems to be very difficuly formally,
--- since the eta rule involves a substiution
-theorem parDiamond {Γ} {t t1 t2 : Term Γ}
+theorem parDiamond {t t1 t2 : Term}
   (p1 : Par t t1) (p2 : Par t t2)
   : ∃ t', Par t1 t' ∧ Par t2 t' :=
   match p1, p2 with
@@ -469,15 +270,16 @@ theorem parDiamond {Γ} {t t1 t2 : Term Γ}
   | Par.pbeta a1 b1, Par.pbeta a2 b2 =>
     let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
     let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
-    ⟨subLast a b, subPar pa1 pb1, subPar pa2 pb2⟩
+    ⟨subst 0 b a, parSubst pb1 pa1, parSubst pb2 pa2⟩
+    -- ⟨subst 0 b a, _, _⟩
   | Par.papp (Par.plam a1) b1, Par.pbeta a2 b2 =>
     let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
     let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
-    ⟨subLast a b, Par.pbeta pa1 pb1, subPar pa2 pb2⟩
+    ⟨subst 0 b a, Par.pbeta pa1 pb1, parSubst pb2 pa2⟩
   | Par.pbeta a1 b1, Par.papp (Par.plam a2) b2 => -- REPEATED CASE
     let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
     let ⟨b, pb1, pb2⟩ := parDiamond b1 b2
-    ⟨subLast a b, subPar pa1 pb1, Par.pbeta pa2 pb2⟩
+    ⟨subst 0 b a, parSubst pb1 pa1, Par.pbeta pa2 pb2⟩
   | Par.plam a1, Par.plam a2 =>
     let ⟨a, pa1, pa2⟩ := parDiamond a1 a2
     ⟨lam _ a, Par.plam pa1, Par.plam pa2⟩
@@ -494,7 +296,7 @@ def closeRef {A} (R : Relation A) : Relation A :=
   fun x y => x = y ∨ R x y
 
 def liftRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
-  (ctr : ∀{x y}, R x y → R' (f x) (f y))
+  (ctr : ∀ {x y}, R x y → R' (f x) (f y))
   : closeRef R x y → closeRef R' (f x) (f y) :=
   fun s => match s with
   | Or.inl rfl => Or.inl rfl
@@ -516,7 +318,7 @@ def transitivity {A} {R : Relation A} {x y z : A}
   | closure.cons s ss => closure.cons s (transitivity ss step2)
 
 def liftCsr {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
-  (ctr : ∀{x y}, R x y → R' (f x) (f y))
+  (ctr : ∀ {x y}, R x y → R' (f x) (f y))
   : closure R x y → closure R' (f x) (f y) :=
   fun s => match s with
   | closure.refl => closure.refl
@@ -527,8 +329,8 @@ inductive union {A} (R S : Relation A) : A → A → Prop
 | s : ∀{x y}, S x y → union R S x y
 
 def liftUnion {A} {B} {R S : Relation A} {R' S' : Relation B} {x y : A} (f : A → B)
-  (ctr1 : ∀{x y}, R x y → R' (f x) (f y))
-  (ctr2 : ∀{x y}, S x y → S' (f x) (f y))
+  (ctr1 : ∀ {x y}, R x y → R' (f x) (f y))
+  (ctr2 : ∀ {x y}, S x y → S' (f x) (f y))
   : union R S x y → union R' S' (f x) (f y) :=
   fun s => match s with
   | union.r r => union.r (ctr1 r)
@@ -638,60 +440,95 @@ theorem commutativeUnion {A} {R S : Relation A}
         exact ⟨out2, right, transitivity (unionClosureToClosureUnion bottom') bottom⟩
 
 
-------- Eta ----------------------------------------------------------------------------------------------
+------- Eta -----------------------------------------------------------------------
 
-def dummy : ∀{Γ}, Term Γ := lam "x" (var Var.zero)
 
-def renFree {Γ1 Γ2} (ren : Ren Γ1 Γ2) (t : Term Γ2) : Prop :=
-  ∃ t', rename ren t' = t
-
-def zFree {Γ} (t : Term (succ Γ)) : Prop := renFree Var.succ t
-
-inductive StepEta : ∀{Γ}, Term Γ → Term Γ → Prop where
-| app1 : ∀ {Γ} {L L' M : Term Γ},
+-- NOTE: i don't think i need parallel eta for this proof.
+inductive StepEta : Term → Term → Prop where
+| app1 : ∀ {L L' M : Term},
     StepEta L L'
     → StepEta (app L M) (app L' M)
-| app2 : ∀ {Γ} {L M M' : Term Γ},
+| app2 : ∀ {L M M' : Term},
     StepEta M M'
     → StepEta (app L M) (app L M')
-| lam : ∀ {Γ s} {N N' : Term (succ Γ)},
+| lam : ∀ {s} {N N' : Term},
     StepEta N N' → StepEta (lam s N) (lam s N')
-| eta : ∀{Γ s} {M : Term (succ Γ)},
- -- The idea to use subsitution here is from Nipkow 2001
-  zFree M
-  → StepEta (lam s (app M (var Var.zero))) (subLast M dummy)
-| alpha : ∀{Γ s1 s2} {M : Term (succ Γ)},
+| eta : ∀{s} {M : Term},
+  StepEta M (lam s (app (lift 0 M) (var 0)))
+| alpha : ∀{s1 s2} {M : Term},
   StepEta (lam s1 M) (lam s2 M)
 
-theorem etaRename {Γ} {M M' : Term Γ}
+theorem etaLift {i} {M M' : Term}
   (p : StepEta M M')
-  : ∀{Δ}, {ren : Ren Γ Δ} → StepEta (rename ren M) (rename ren M') := by
+  : StepEta (lift i M) (lift i M') := by
+  revert i
   induction p with
-  | lam _p ih => intros; simp [rename]; apply StepEta.lam; apply ih
-  | app1 _p ih => intros; simp [rename]; apply StepEta.app1; apply ih
-  | app2 _p ih => intros; simp [rename]; apply StepEta.app2; apply ih
-  | alpha => intros; simp [rename]; apply StepEta.alpha
-  | @eta _ _ M zf => -- surely I could have written this proof better...
-    intro Δ ren
-    simp [rename]
-    rw [<- renameSubstCommute]
+  | lam _p ih => intros; simp [lift]; apply StepEta.lam; apply ih
+  | app1 _p ih => intros; simp [lift]; apply (StepEta.app1 ih)
+  | app2 _p ih => intros; simp [lift]; apply (StepEta.app2 ih)
+  | eta =>
+    intros
+    simp [lift]
+    rw [lift_lift] <;> try cutsat
     apply StepEta.eta
-    simp [zFree, renFree]
-    apply Exists.elim; apply zf; intro t' eq
-    exists (rename ren t')
-    rw [composeRename]
-    have eq' : rename ((ext ren) ∘ Var.succ) t' = rename (ext ren) M := by
-      rw [<- composeRename]
-      apply congrArg
-      apply eq
-    have lemma {n1 n2} {ren : Ren n1 n2} : ((ext ren) ∘ Var.succ) = Var.succ ∘ ren := by
-      apply funext
-      intro x
-      cases x
-      . rfl
-      . rfl
-    rw [<- lemma]
-    apply eq'
+  | alpha =>
+    intros
+    apply StepEta.alpha
+
+theorem etaSubst {i} {N N'} {M M' : Term}
+  (p1 : StepEta N N')
+  (p2 : StepEta M M')
+  : closure StepEta (subst i N M) (subst i N' M') := by
+  revert i N N'
+  induction p2 with
+  | lam _p ih =>
+    intros i N N' pNN'
+    simp [subst]
+    apply oneStep
+    apply StepEta.lam
+    apply ih
+    apply etaLift
+    apply pNN'
+  | app1 _p1 ih =>
+    intros i N N' pNN'
+    simp [subst]
+    apply (StepEta.app1 (ih pNN'))
+    sorry
+  | app2 _p1 ih =>
+    sorry
+  | alpha =>
+    sorry
+  | eta =>
+    sorry
+
+theorem parSubst {i} {N N'} {M M' : Term}
+  (p1 : Par N N')
+  (p2 : Par M M')
+  : Par (subst i N M) (subst i N' M') := by
+  revert i N N'
+  induction p2 with
+  | @pvar x =>
+    intros; simp [subst]; split
+    · apply parRefl
+    · split
+      · assumption
+      · apply parRefl
+  | pconst => intros; constructor
+  | plam _p ih =>
+    intros i N N' pNN'
+    simp [subst]; apply Par.plam; apply ih
+    apply parLift
+    apply pNN'
+  | papp _p1 _p2 ih1 ih2 =>
+    intros i N N' pNN'
+    simp [subst]; apply (Par.papp (ih1 pNN') (ih2 pNN'))
+  | @pbeta s a a' b b' _p1 _p2 ih1 ih2 =>
+    intros i N N' pNN'
+    rw [subst_subst] <;> try cutsat
+    simp [subst]
+    apply Par.pbeta
+    · apply (ih1 (parLift pNN'))
+    · apply (ih2 pNN')
 
 --------------
 
@@ -1017,19 +854,13 @@ theorem confluence {Γ} : confluent (union (@Step Γ) StepEta) :=
 
 ---------------- definitions to be used in the quotient --------------
 
--- def singleLift {Γ} (i : Var (succ Γ)) : Ren Γ (succ Γ) :=
---   match Γ, i with
---   | _, Var.zero => Var.succ
---   | Nat.succ Γ', Var.succ i' => ext (singleLift i')
-
-def liftVar {Γ} (i : Var (succ Γ)) (j : Var Γ) : Var (succ Γ) :=
-  match i, j with
-  | Var.zero, j => Var.succ j
-  | Var.succ i', Var.succ j' => Var.succ (liftVar i' j')
-  | _, Var.zero => Var.zero
+def singleLift {Γ} (i : Var (succ Γ)) : Ren Γ (succ Γ) :=
+  match Γ, i with
+  | _, Var.zero => Var.succ
+  | Nat.succ Γ', Var.succ i' => ext (singleLift i')
 
 def lift {Γ} (i : Var (succ Γ)) (t : Term Γ) : Term (succ Γ) :=
-  rename (liftVar i) t
+  rename (singleLift i) t
 
 theorem lift_app {Γ} {t1 t2 : Term Γ} (i : Var (succ Γ))
   : lift i (app t1 t2) = app (lift i t1) (lift i t2) := by
@@ -1037,8 +868,7 @@ theorem lift_app {Γ} {t1 t2 : Term Γ} (i : Var (succ Γ))
 
 theorem lift_lam {Γ s} {t : Term (succ Γ)} (i : Var (succ Γ))
   : lift i (lam s t) = lam s (lift (Var.succ i) t) := by
-  simp [lift, rename, ext]
-  sorry
+  simp [lift, rename, singleLift]
 
 -- something for var?
 -- def singleSub {Γ} (i : Var (succ Γ)) (toSub : Term Γ) : Subst (succ Γ) Γ :=
@@ -1048,9 +878,9 @@ deriving instance BEq for Var
 -- is there really NO simple recursive definition?
 def singleSub' {Γ Γ'} (r : Ren (succ Γ) Γ') (i : Var (succ Γ)) (toSub : Term Γ') : Subst (succ Γ) Γ' :=
   match Γ, i with
-  | _, Var.zero => cons toSub (renToSub (composeRename ren _))
+  | _, Var.zero => cons toSub _
   | Nat.succ Γ', Var.succ i' =>
-    -- let x := singleSub' r i' toSub
+    let x := singleSub i' toSub
     _
 
 def singleSub {Γ} (i : Var (succ Γ)) (toSub : Term Γ) : Subst (succ Γ) Γ :=
@@ -1063,12 +893,5 @@ def singleSub {Γ} (i : Var (succ Γ)) (toSub : Term Γ) : Subst (succ Γ) Γ :=
   -- | Nat.succ Γ2, Var.succ i' => cons _ (singleSub' i' toSub)
 
 #check Term
-def sub : ∀{Γ}, Var Γ → Term Γ → Term Γ → Term Γ := _
-
-theorem subst_app {Γ} {t1 t2 : Term Γ} (i : Var Γ) (toSub : Term Γ)
-  : sub i toSub (app t1 t2) = app (sub i toSub t1) (sub i toSub t2) := by
-  sorry
-
-theorem subst_lam {Γ s} {t : Term (succ Γ)} (i : Var Γ) (toSub : Term Γ)
-  : sub i toSub (lam s t) = lam s (sub (Var.succ i) (lift Var.zero toSub) t) := by
-  sorry
+def sub : ∀{Γ}, Term Γ → Var Γ → Term Γ → Term Γ :=
+  fun t x toSub => subst _ t

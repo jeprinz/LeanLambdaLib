@@ -10,6 +10,8 @@
 -- import Mathlib.Data.Nat.Basic
 -- import Lean.Elab.Tactic.Omega
 
+import Mathlib.Tactic.ApplyFun
+
 open Classical
 
 
@@ -26,7 +28,8 @@ open Term
 
 def lift (k : Nat) (t : Term) : Term :=
   match t with
-  | var i => if i >= k then Term.var (Nat.succ i) else Term.var i
+  -- | var i => if i >= k then Term.var (Nat.succ i) else Term.var i
+  | var i => Term.var (if i >= k then Nat.succ i else i)
   | const c => const c
   | lam s t => lam s (lift (Nat.succ k) t)
   | app t1 t2 => app (lift k t1) (lift k t2)
@@ -193,6 +196,35 @@ theorem subst_subst (i1 i2 : Nat) (t1 t2 t : Term) (H : i1 >= i2) :
     simp [subst]
     rw [ih1, ih2]
     repeat (first | simp | split | cutsat | contradiction)
+
+theorem lift_injective {i : Nat} {M N : Term} (H : lift i M = lift i N) : M = N := by
+  revert i N H
+  induction M with
+  | var i =>
+    intros i N H
+    cases N <;> try contradiction
+    simp [lift] at H
+    repeat' (first | split at H | cutsat)
+  | const c =>
+    intros i N H
+    cases N <;> try contradiction
+    simp [lift] at H
+    subst c
+    rfl
+  | lam s t ih =>
+    intros i N H
+    cases N <;> try contradiction
+    simp [lift] at H
+    cases H with | intro H1 H2
+    subst s
+    rw [ih H2]
+  | app t1 t2 ih1 ih2 =>
+    intros i N H
+    cases N <;> try contradiction
+    simp [lift] at H
+    cases H with | intro H1 H2
+    rw [ih1 H1]
+    rw [ih2 H2]
 
 --------------------------------------------------------------------------------
 ---------- A proof of confluence -----------------------------------------------
@@ -442,6 +474,7 @@ theorem commutativeUnion {A} {R S : Relation A}
 
 ------- Eta -----------------------------------------------------------------------
 
+def dummy : Term := const (Constant.strConst "dummy")
 
 -- NOTE: i don't think i need parallel eta for this proof.
 inductive StepEta : Term → Term → Prop where
@@ -453,10 +486,20 @@ inductive StepEta : Term → Term → Prop where
     → StepEta (app L M) (app L M')
 | lam : ∀ {s} {N N' : Term},
     StepEta N N' → StepEta (lam s N) (lam s N')
-| eta : ∀{s} {M : Term},
-  StepEta M (lam s (app (lift 0 M) (var 0)))
+-- this version doesn't work well with pattern matching
+-- | eta : ∀{s} {M : Term},
+  -- StepEta (lam s (app (lift 0 M) (var 0))) M
+-- from the other version:
+-- | eta : ∀{Γ s} {M : Term (succ Γ)},
+--  -- The idea to use subsitution here is from Nipkow 2001
+--   zFree M
+--   → StepEta (lam s (app M (var Var.zero))) (subLast M dummy)
+| eta : ∀{s} {M M' : Term},
+  M = lift 0 M'
+  → StepEta (lam s (app M (var 0))) M'
 | alpha : ∀{s1 s2} {M : Term},
   StepEta (lam s1 M) (lam s2 M)
+
 
 theorem etaLift {i} {M M' : Term}
   (p : StepEta M M')
@@ -466,16 +509,18 @@ theorem etaLift {i} {M M' : Term}
   | lam _p ih => intros; simp [lift]; apply StepEta.lam; apply ih
   | app1 _p ih => intros; simp [lift]; apply (StepEta.app1 ih)
   | app2 _p ih => intros; simp [lift]; apply (StepEta.app2 ih)
-  | eta =>
+  | @eta s M M' p =>
     intros
+    subst M
     simp [lift]
     rw [lift_lift] <;> try cutsat
     apply StepEta.eta
+    rfl
   | alpha =>
     intros
     apply StepEta.alpha
 
--- TODO: refactor with the other etaSubst?
+-- TODO: generalize this? it really doesn't depend on the details of StepEta.
 theorem etaSubst1 {i} {N N'} {M : Term}
   (p : StepEta N N')
   : closure StepEta (subst i N M) (subst i N' M) := by
@@ -531,15 +576,17 @@ theorem etaSubst2 {i} {N M M' : Term}
   | alpha =>
     intros
     apply StepEta.alpha
-  | @eta s M =>
+  | @eta s M M' p =>
     intros i N
+    subst M
     simp [subst]
-    have iamwritingaproof : subst (i + 1) (lift 0 N) (lift 0 M) = lift 0 (subst i N M) := by
+    have iamwritingaproof : subst (i + 1) (lift 0 N) (lift 0 M') = lift 0 (subst i N M') := by
       rewrite [lift_subst]
       split <;> try cutsat
       rewrite [subst_lift_off_by_1] <;> try cutsat
     rewrite [iamwritingaproof]
     apply StepEta.eta
+    rfl
 
 theorem etaSubst {i} {N N'} {M M' : Term}
   (p1 : StepEta N N')
@@ -551,6 +598,56 @@ theorem etaSubst {i} {N N'} {M M' : Term}
   · apply oneStep
     apply etaSubst2
     assumption
+
+-- this statement is stupid
+-- get rid of M, just substitute it
+-- but  also, do i need the exists? can i just have it be
+-- forall ..., StepEta a b -> StepEta (lift a) (lift b)
+-- which i've already proven?
+theorem stepEtaRespectsLift {i : Nat} {M N M' : Term}
+  (H : M = lift i M') (step : StepEta M N)
+  : exists N', N = lift i N' := by
+  revert i M' H
+  induction step with
+  | lam _p ih =>
+    intros
+    sorry
+  | @app1 L L' R _p1 ih =>
+    intros i M' H
+    cases M' <;> simp [lift] at H
+    rcases H with ⟨rfl, rfl⟩
+    --
+    specialize (ih rfl)
+    rcases ih with ⟨N', rfl⟩
+    exact ⟨app _ _, rfl⟩
+  | app2 _p1 ih =>
+    intros
+    sorry
+  | alpha =>
+    intros
+    sorry
+  | @eta s M M' p =>
+    intros i M' H
+    --
+    subst M
+    --
+    cases M' with | lam s t => _ | _  <;> simp [lift] at H
+    --
+    rcases H with ⟨rfl, H⟩
+    --
+    cases t with | app l r => _ | _  <;> simp [lift] at H
+    --
+    rcases H with ⟨q, H⟩
+    --
+    apply_fun (subst 0 dummy) at q
+    rewrite [subst_lift] at q
+    -- idea: subst 0 dummy on both sides of q
+    --
+    exists (subst 1 dummy l)
+    rewrite [lift_subst] ; split ; repeat cutsat
+    --
+    sorry
+    sorry
 
 --------------
 
@@ -585,20 +682,34 @@ theorem etaProperty : square StepEta StepEta
   | StepEta.lam s1, StepEta.lam s2 =>
     let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
     ⟨lam _ u, liftRef (lam _) StepEta.lam bla1, liftRef (lam _) StepEta.lam bla2⟩
-  | StepEta.eta, StepEta.eta => ⟨_, Or.inl rfl, _ ⟩
-  | StepEta.lam (StepEta.app1 s), StepEta.eta =>
+  | StepEta.eta p, StepEta.eta p' =>
+    ⟨_, Or.inl rfl, Or.inl (lift_injective (Eq.trans (Eq.symm p') p)) ⟩
+  | StepEta.lam (StepEta.app1 s), StepEta.eta p => by
     -- ⟨_, Or.inr (StepEta.eta (stepEtaZFree s zf)), Or.inr (substEta s)⟩
-    ⟨_, _, _⟩
-  | StepEta.eta, StepEta.lam (StepEta.app1 s) => -- REPEATED CASE
+    -- ⟨_, Or.inr (StepEta.eta p), _⟩
+    subst_vars
+    -- sorry
+    -- exact ⟨_, Or.inr (StepEta.eta _), _⟩
+    constructor
+    constructor
+    · --
+      apply Or.inr
+      apply StepEta.eta
+      sorry
+    · --
+      sorry
+    · --
+      sorry
+  | StepEta.eta p, StepEta.lam (StepEta.app1 s) => -- REPEATED CASE
     -- ⟨_, Or.inr (substEta s), Or.inr (StepEta.eta (stepEtaZFree s zf))⟩
     ⟨_, Or.inr _, Or.inr _⟩
   | @StepEta.alpha _ s M, StepEta.alpha => ⟨lam s M, Or.inr StepEta.alpha, Or.inr StepEta.alpha⟩
   | StepEta.alpha, StepEta.lam s => ⟨_, Or.inr (StepEta.lam s), Or.inr StepEta.alpha⟩
   | StepEta.lam s, StepEta.alpha => ⟨_, Or.inr StepEta.alpha, Or.inr (StepEta.lam s)⟩
-  | StepEta.alpha, StepEta.eta =>
+  | StepEta.alpha, StepEta.eta p =>
     -- ⟨_, Or.inr (StepEta.eta zf), Or.inl rfl⟩
     ⟨_, Or.inr _, Or.inl rfl⟩
-  | StepEta.eta, StepEta.alpha =>
+  | StepEta.eta p, StepEta.alpha =>
     -- ⟨_, Or.inl rfl, Or.inr (StepEta.eta zf)⟩
     ⟨_, Or.inl rfl, Or.inr _⟩
 

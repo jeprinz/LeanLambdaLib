@@ -6,9 +6,9 @@
 -- i don't know if this will actually work, but what if i have an idea of bringing things into
 -- a normal form, where the subst and lifts are in order of increasing index.
 -- and all lifts are inside all substs.
-import Mathlib.Tactic.Ring.RingNF
-import Mathlib.Data.Nat.Basic
-import Lean.Elab.Tactic.Omega
+-- import Mathlib.Tactic.Ring.RingNF
+-- import Mathlib.Data.Nat.Basic
+-- import Lean.Elab.Tactic.Omega
 
 open Classical
 
@@ -46,7 +46,7 @@ inductive Step : Term → Term → Prop where
     Step M M'
     → Step (app L M) (app L M')
 | beta : ∀ {s} {N : Term} {M : Term},
-    Step (app (lam s N) M) (subst 0 N M)
+    Step (app (lam s N) M) (subst 0 M N)
 | lam : ∀ {s} {N N' : Term},
     Step N N' → Step (lam s N) (lam s N')
 
@@ -475,230 +475,101 @@ theorem etaLift {i} {M M' : Term}
     intros
     apply StepEta.alpha
 
+-- TODO: refactor with the other etaSubst?
+theorem etaSubst1 {i} {N N'} {M : Term}
+  (p : StepEta N N')
+  : closure StepEta (subst i N M) (subst i N' M) := by
+  revert i N N' p
+  induction M with
+  | var i =>
+    intros
+    simp [subst]
+    repeat' (first | simp [subst] | split | cutsat | apply closure.refl)
+    apply oneStep
+    assumption
+  | const c =>
+    intros
+    apply closure.refl
+  | lam s t ih =>
+    intros
+    simp [subst]
+    apply (liftCsr (lam _) StepEta.lam)
+    apply ih
+    apply etaLift
+    assumption
+  | app t1 t2 ih1 ih2 =>
+    intros
+    apply transitivity
+    · apply (liftCsr (fun x => app x _) StepEta.app1)
+      apply ih1
+      assumption
+    · apply (liftCsr (app _) StepEta.app2)
+      apply ih2
+      assumption
+
+theorem etaSubst2 {i} {N M M' : Term}
+  (p : StepEta M M')
+  : StepEta (subst i N M) (subst i N M') := by
+  revert i N
+  induction p with
+  | lam _p ih =>
+    intros
+    simp [subst]
+    --
+    apply StepEta.lam
+    apply ih
+  | app1 _p1 ih =>
+    intros
+    simp [subst]
+    apply StepEta.app1
+    apply ih
+  | app2 _p1 ih =>
+    intros
+    simp [subst]
+    apply StepEta.app2
+    apply ih
+  | alpha =>
+    intros
+    apply StepEta.alpha
+  | @eta s M =>
+    intros i N
+    simp [subst]
+    have iamwritingaproof : subst (i + 1) (lift 0 N) (lift 0 M) = lift 0 (subst i N M) := by
+      rewrite [lift_subst]
+      split <;> try cutsat
+      rewrite [subst_lift_off_by_1] <;> try cutsat
+    rewrite [iamwritingaproof]
+    apply StepEta.eta
+
 theorem etaSubst {i} {N N'} {M M' : Term}
   (p1 : StepEta N N')
   (p2 : StepEta M M')
   : closure StepEta (subst i N M) (subst i N' M') := by
-  revert i N N'
-  induction p2 with
-  | lam _p ih =>
-    intros i N N' pNN'
-    simp [subst]
-    apply oneStep
-    apply StepEta.lam
-    apply ih
-    apply etaLift
-    apply pNN'
-  | app1 _p1 ih =>
-    intros i N N' pNN'
-    simp [subst]
-    apply (StepEta.app1 (ih pNN'))
-    sorry
-  | app2 _p1 ih =>
-    sorry
-  | alpha =>
-    sorry
-  | eta =>
-    sorry
-
-theorem parSubst {i} {N N'} {M M' : Term}
-  (p1 : Par N N')
-  (p2 : Par M M')
-  : Par (subst i N M) (subst i N' M') := by
-  revert i N N'
-  induction p2 with
-  | @pvar x =>
-    intros; simp [subst]; split
-    · apply parRefl
-    · split
-      · assumption
-      · apply parRefl
-  | pconst => intros; constructor
-  | plam _p ih =>
-    intros i N N' pNN'
-    simp [subst]; apply Par.plam; apply ih
-    apply parLift
-    apply pNN'
-  | papp _p1 _p2 ih1 ih2 =>
-    intros i N N' pNN'
-    simp [subst]; apply (Par.papp (ih1 pNN') (ih2 pNN'))
-  | @pbeta s a a' b b' _p1 _p2 ih1 ih2 =>
-    intros i N N' pNN'
-    rw [subst_subst] <;> try cutsat
-    simp [subst]
-    apply Par.pbeta
-    · apply (ih1 (parLift pNN'))
-    · apply (ih2 pNN')
+  apply transitivity
+  · apply etaSubst1
+    apply p1
+  · apply oneStep
+    apply etaSubst2
+    assumption
 
 --------------
 
-def EtaSubst {Γ} {Δ} (sub1 sub2 : Subst Γ Δ) : Prop :=
-  {x : Var Γ} → closure StepEta (sub1 x) (sub2 x)
-
-theorem closureEtaRename {Γ} {M M' : Term Γ}
-  (p : closure StepEta M M')
-  : ∀{Δ}, {ren : Ren Γ Δ} → closure StepEta (rename ren M) (rename ren M') :=
-  match p with
-  | closure.refl => closure.refl
-  | closure.cons s ss => closure.cons (etaRename s) (closureEtaRename ss)
-
-theorem etaSubstExts {Γ Δ} {sub1 sub2 : Subst Γ Δ}
-  (ps : EtaSubst sub1 sub2)
-  : EtaSubst (exts sub1) (exts sub2) := by
-  intro x
-  cases x
-  . apply closure.refl
-  . apply closureEtaRename; apply ps
-
-theorem substEta {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
-  (p : StepEta M M')
-  : StepEta (subst sub M) (subst sub M') :=
-  match p with
-  | StepEta.app1 p => StepEta.app1 (substEta p)
-  | StepEta.app2 p => StepEta.app2 (substEta p)
-  | StepEta.lam p => StepEta.lam (substEta p)
-  | StepEta.alpha => StepEta.alpha
-  | @StepEta.eta _ _ M zf => by
-    simp [subst]
-    simp [subLast]
-    rw [subSub]
-    rw [<- substZeroSub]
-    rw [<- subSub]
-    apply StepEta.eta
-    simp [zFree, renFree] at *
-    apply Exists.elim; apply zf; intro t' eq
-    exists (subst sub t')
-    have eq' : subst (exts sub) (rename (Var.succ) t') = subst (exts sub) M := by
-      apply congrArg
-      apply eq
-    rw [<- commuteSubstRename]
-    apply eq'
-    intro x
-    cases x
-    . rfl
-    . rfl
-
-theorem substEta1 {Γ Δ} {sub1 sub2 : Subst Γ Δ} {M : Term Γ}
-  (es : EtaSubst sub1 sub2)
-  : closure StepEta (subst sub1 M) (subst sub2 M) :=
-  match M with
-  | var i => @es i
-  | const c => by simp[subst]; constructor
-  | app _t1 _t2 =>
-    transitivity
-      (liftCsr (fun x => app x _) StepEta.app1 (substEta1 es))
-      (liftCsr (app _) StepEta.app2 (substEta1 es))
-  | lam s _t => liftCsr (lam s) StepEta.lam (substEta1 (etaSubstExts es))
-
-def etaSubstZero {Γ} {M M' : Term Γ}
-  (p : closure StepEta M M') : EtaSubst (substZero M) (substZero M')
-  := fun {x} =>
-    match x with
-    | Var.zero => p
-    | Var.succ _x' => closure.refl
-
-theorem subEta {Γ} {N N' : Term (succ Γ)} { M M' : Term Γ}
-  (p1 : closure StepEta N N') (p2 : closure StepEta M M')
-  : closure StepEta (subLast N M) (subLast N' M') :=
-  match p1 with
-  | closure.refl => substEta1 (etaSubstZero p2)
-  | closure.cons s ss => closure.cons (substEta s) (subEta ss p2)
-
-theorem lamRenFree {n2} {M : Term (succ n2)} {ren : Ren n1 n2}
-  : renFree (ext ren) M ↔ renFree ren (lam s M) :=
-    Iff.intro
-      (fun ⟨t, renProof⟩ => ⟨lam s t, by simp [rename]; apply renProof⟩)
-      (fun ⟨lam s' t, renProof⟩ => ⟨ t, by
-        simp [rename] at renProof; cases renProof with | intro a b => subst a; assumption⟩)
-
-theorem appRenFree {n2} {M N : Term n2} {ren : Ren n1 n2}
-  : (renFree ren M /\ renFree ren N) ↔ renFree ren (app M N) :=
-    Iff.intro
-      (fun ⟨⟨t1, p1⟩, ⟨t2, p2⟩⟩ => ⟨app t1 t2, by simp [rename]; apply And.intro; apply p1; apply p2⟩)
-      (fun ⟨app t1 t2, p⟩ =>
-        ⟨⟨t1, by simp [rename] at p; apply (And.left p)⟩
-        , ⟨t2, by simp [rename] at p; apply (And.right p)⟩⟩)
-
-theorem subLastZFree {n} {M : Term (succ n)} {d1 d2 : Term n}
-  (zf : zFree M)
-  : subLast M d1 = subLast M d2 := by
-  simp [zFree, renFree] at zf
-  apply Exists.elim; apply zf; intro t' eq
-  rw [<- eq]
-  have lemma {n} {a b : Term n} : subLast (rename Var.succ a) b = a := by
-      rw [renameSubstRen]
-      simp [subLast]
-      rw [substZConsIds]
-      rw [subSub]
-      have lemma' : compose (renToSub Var.succ) (cons b ids) = ids := by
-        apply funext
-        intro x
-        cases x
-        . rfl
-        . rfl
-      rw [lemma']
-      rw [subId]
-  rw [lemma]
-  rw [lemma]
-
-theorem stepEtaZFree {n1 n2} {M N : Term n2} (step : StepEta M N) {ren : Ren n1 n2}
-  (rf : renFree ren M) : renFree ren N :=
-  match step with
-  | StepEta.app1 p => Iff.mp appRenFree
-    ⟨stepEtaZFree p (And.left (Iff.mpr appRenFree rf))
-    , (And.right (Iff.mpr appRenFree rf))⟩
-  | StepEta.app2 p => Iff.mp appRenFree
-    ⟨(And.left (Iff.mpr appRenFree rf))
-    , stepEtaZFree p (And.right (Iff.mpr appRenFree rf))⟩
-  | StepEta.lam p => Iff.mp lamRenFree (stepEtaZFree p (Iff.mpr lamRenFree rf))
-  | StepEta.eta zf =>
-    let ⟨t, p⟩ := And.left (Iff.mpr appRenFree (Iff.mpr lamRenFree rf))
-    ⟨subLast t dummy, (by
-      rw [<- renameSubstCommute]
-      rw [p]
-      rfl
-      ) ⟩
-  | StepEta.alpha => Iff.mp lamRenFree (Iff.mpr lamRenFree rf)
-
-theorem stepZFree {n1 n2} {M N : Term n2} (step : Step M N) {ren : Ren n1 n2}
-  (rf : renFree ren M) : renFree ren N :=
-  match step with
-  | Step.app1 p => Iff.mp appRenFree
-    ⟨stepZFree p (And.left (Iff.mpr appRenFree rf))
-    , (And.right (Iff.mpr appRenFree rf))⟩
-  | Step.app2 p => Iff.mp appRenFree
-    ⟨(And.left (Iff.mpr appRenFree rf))
-    , stepZFree p (And.right (Iff.mpr appRenFree rf))⟩
-  | Step.lam p => Iff.mp lamRenFree (stepZFree p (Iff.mpr lamRenFree rf))
-  | Step.beta =>
-    let ⟨rflamn, rfm⟩ := Iff.mpr appRenFree rf
-    let rfn := Iff.mpr lamRenFree rflamn
-    let ⟨m, proofm⟩ := rfm
-    let ⟨n, proofn⟩ := rfn
-    by
-      --
-      simp [renFree]
-      exists (subLast n m)
-      rw [<- proofm]
-      rw [<- proofn]
-      rw [renameSubstCommute]
-
-theorem substStep {Γ Δ} {sub : Subst Γ Δ} {M M' : Term Γ}
+theorem substStep {i N} {M M' : Term}
   (step : Step M M')
-  : Step (subst sub M) (subst sub M') :=
+  : Step (subst i N M) (subst i N M') :=
   match step with
   | Step.app1 p => Step.app1 (substStep p)
   | Step.app2 p => Step.app2 (substStep p)
   | Step.lam p => Step.lam (substStep p)
   | Step.beta => by
     simp [subst]
-    rw [<- substCommute]
+    rw [subst_subst] <;> try cutsat
     apply Step.beta
 
 -- def rfStepEta {Γ} := closeRef (@StepEta Γ)
 
-theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
-  (closeRef (@StepEta Γ)) (closeRef (@StepEta Γ)) :=
+theorem etaProperty : square StepEta StepEta
+  (closeRef StepEta) (closeRef StepEta) :=
   fun p1 p2 =>
   match p1, p2 with
   | StepEta.app1 s1, StepEta.app1 s2 =>
@@ -714,16 +585,22 @@ theorem etaProperty {Γ} : square (@StepEta Γ) (@StepEta Γ)
   | StepEta.lam s1, StepEta.lam s2 =>
     let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
     ⟨lam _ u, liftRef (lam _) StepEta.lam bla1, liftRef (lam _) StepEta.lam bla2⟩
-  | StepEta.eta zf1, StepEta.eta zf2 => ⟨_, Or.inl rfl, Or.inl rfl⟩
-  | StepEta.lam (StepEta.app1 s), StepEta.eta zf =>
-    ⟨_, Or.inr (StepEta.eta (stepEtaZFree s zf)), Or.inr (substEta s)⟩
-  | StepEta.eta zf, StepEta.lam (StepEta.app1 s) => -- REPEATED CASE
-    ⟨_, Or.inr (substEta s), Or.inr (StepEta.eta (stepEtaZFree s zf))⟩
-  | @StepEta.alpha _ _ s M, StepEta.alpha => ⟨lam s M, Or.inr StepEta.alpha, Or.inr StepEta.alpha⟩
+  | StepEta.eta, StepEta.eta => ⟨_, Or.inl rfl, _ ⟩
+  | StepEta.lam (StepEta.app1 s), StepEta.eta =>
+    -- ⟨_, Or.inr (StepEta.eta (stepEtaZFree s zf)), Or.inr (substEta s)⟩
+    ⟨_, _, _⟩
+  | StepEta.eta, StepEta.lam (StepEta.app1 s) => -- REPEATED CASE
+    -- ⟨_, Or.inr (substEta s), Or.inr (StepEta.eta (stepEtaZFree s zf))⟩
+    ⟨_, Or.inr _, Or.inr _⟩
+  | @StepEta.alpha _ s M, StepEta.alpha => ⟨lam s M, Or.inr StepEta.alpha, Or.inr StepEta.alpha⟩
   | StepEta.alpha, StepEta.lam s => ⟨_, Or.inr (StepEta.lam s), Or.inr StepEta.alpha⟩
   | StepEta.lam s, StepEta.alpha => ⟨_, Or.inr StepEta.alpha, Or.inr (StepEta.lam s)⟩
-  | StepEta.alpha, StepEta.eta zf => ⟨_, Or.inr (StepEta.eta zf), Or.inl rfl⟩
-  | StepEta.eta zf, StepEta.alpha => ⟨_, Or.inl rfl, Or.inr (StepEta.eta zf)⟩
+  | StepEta.alpha, StepEta.eta =>
+    -- ⟨_, Or.inr (StepEta.eta zf), Or.inl rfl⟩
+    ⟨_, Or.inr _, Or.inl rfl⟩
+  | StepEta.eta, StepEta.alpha =>
+    -- ⟨_, Or.inl rfl, Or.inr (StepEta.eta zf)⟩
+    ⟨_, Or.inl rfl, Or.inr _⟩
 
 theorem betaEtaCommuteProperty {Γ}
   : square (@Step Γ) (@StepEta Γ) (closure (@StepEta Γ)) (closeRef (@Step Γ)) :=

@@ -53,8 +53,9 @@ inductive Step : Term → Term → Prop where
 | lam : ∀ {s} {N N' : Term},
     Step N N' → Step (lam s N) (lam s N')
 
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------------
+--- everybody's favorite part: a bzillion lemmas about substitution and renaming ---
+------------------------------------------------------------------------------------
 
 theorem lift_lift (i1 i2 : Nat) (t : Term) (H : i2 < i1) :
     lift i1 (lift i2 t) = lift i2 (lift (Nat.pred i1) t) := by
@@ -225,6 +226,28 @@ theorem lift_injective {i : Nat} {M N : Term} (H : lift i M = lift i N) : M = N 
     cases H with | intro H1 H2
     rw [ih1 H1]
     rw [ih2 H2]
+
+theorem subst_lift_2 (i : Nat) {t : Term} :
+    t = subst i (var i) (lift (Nat.succ i) t) := by
+  revert i
+  induction t with
+  | var i =>
+    intros i
+    simp [subst, lift]
+    repeat' (first | split | cutsat )
+  | const c =>
+    intros i
+    rfl
+  | lam s t ih =>
+    intros i
+    simp [lift, subst]
+    apply ih (Nat.succ i)
+  | app t1 t2 ih1 ih2 =>
+    intros i
+    simp [subst, lift]
+    apply And.intro
+    · apply ih1
+    · apply ih2
 
 --------------------------------------------------------------------------------
 ---------- A proof of confluence -----------------------------------------------
@@ -552,7 +575,7 @@ theorem etaSubst1 {i} {N N'} {M : Term}
       apply ih2
       assumption
 
-theorem etaSubst2 {i} {N M M' : Term}
+theorem etaSubst2 (i N) {M M' : Term}
   (p : StepEta M M')
   : StepEta (subst i N M) (subst i N M') := by
   revert i N
@@ -599,71 +622,106 @@ theorem etaSubst {i} {N N'} {M M' : Term}
     apply etaSubst2
     assumption
 
--- this statement is stupid
--- get rid of M, just substitute it
--- but  also, do i need the exists? can i just have it be
--- forall ..., StepEta a b -> StepEta (lift a) (lift b)
--- which i've already proven?
-theorem stepEtaRespectsLift {i : Nat} {M N M' : Term}
-  (H : M = lift i M') (step : StepEta M N)
+theorem stepEtaRespectsLift {i : Nat} {M N : Term}
+  (step : StepEta (lift i M) N)
   : exists N', N = lift i N' := by
-  revert i M' H
+  generalize H : lift i M = x at *
+  revert i M
   induction step with
   | lam _p ih =>
-    intros
-    sorry
-  | @app1 L L' R _p1 ih =>
-    intros i M' H
-    cases M' <;> simp [lift] at H
+    intros i M H
+    cases M with | lam s t => _ | _ <;> simp [lift] at H
     rcases H with ⟨rfl, rfl⟩
-    --
+    specialize (ih rfl)
+    rcases ih with ⟨N', rfl⟩
+    exists (lam s N')
+  | @app1 L L' R _p1 ih =>
+    intros i M H
+    cases M <;> simp [lift] at H
+    rcases H with ⟨rfl, rfl⟩
     specialize (ih rfl)
     rcases ih with ⟨N', rfl⟩
     exact ⟨app _ _, rfl⟩
   | app2 _p1 ih =>
-    intros
-    sorry
+    intros i M H
+    cases M <;> simp [lift] at H
+    rcases H with ⟨rfl, rfl⟩
+    specialize (ih rfl)
+    rcases ih with ⟨N', rfl⟩
+    exact ⟨app _ _, rfl⟩
   | alpha =>
-    intros
-    sorry
+    intros i M H
+    cases M with | lam s t => _ | _ <;> simp [lift] at H
+    rcases H with ⟨rfl, rfl⟩
+    exact ⟨lam _ t, rfl⟩
   | @eta s M M' p =>
     intros i M' H
-    --
     subst M
-    --
     cases M' with | lam s t => _ | _  <;> simp [lift] at H
-    --
     rcases H with ⟨rfl, H⟩
-    --
     cases t with | app l r => _ | _  <;> simp [lift] at H
-    --
     rcases H with ⟨q, H⟩
-    --
-    apply_fun (subst 0 dummy) at q
+    clear H
+    apply_fun (subst 0 (lift i dummy)) at q
     rewrite [subst_lift] at q
     -- idea: subst 0 dummy on both sides of q
-    --
-    exists (subst 1 dummy l)
-    rewrite [lift_subst] ; split ; repeat cutsat
-    --
-    sorry
-    sorry
+    have coolfact : subst 0 (lift i dummy) (lift (i + 1) l) = lift i (subst 0 dummy l) := by
+      rw [lift_subst]
+      simp -- TODO: how does simp solve this goal?
+    rewrite [coolfact] at q
+    exists (subst 0 dummy l)
+    subst M'
+    rfl
 
---------------
-
-theorem substStep {i N} {M M' : Term}
+theorem substStep (i N) {M M' : Term}
   (step : Step M M')
   : Step (subst i N M) (subst i N M') :=
   match step with
-  | Step.app1 p => Step.app1 (substStep p)
-  | Step.app2 p => Step.app2 (substStep p)
-  | Step.lam p => Step.lam (substStep p)
+  | Step.app1 p => Step.app1 (substStep i N p)
+  | Step.app2 p => Step.app2 (substStep i N p)
+  | Step.lam p => Step.lam (substStep _ _ p)
   | Step.beta => by
     simp [subst]
     rw [subst_subst] <;> try cutsat
     apply Step.beta
 
--- def rfStepEta {Γ} := closeRef (@StepEta Γ)
+theorem stepRespectsLift {i : Nat} {M N : Term}
+  (step : Step (lift i M) N)
+  : exists N', N = lift i N' := by
+  generalize H : lift i M = x at *
+  revert i M
+  induction step with
+  | lam _p ih =>
+    intros i M H
+    cases M with | lam s t => _ | _ <;> simp [lift] at H
+    rcases H with ⟨rfl, rfl⟩
+    specialize (ih rfl)
+    rcases ih with ⟨N', rfl⟩
+    exists (lam s N')
+  | @app1 L L' R _p1 ih =>
+    intros i M H
+    cases M <;> simp [lift] at H
+    rcases H with ⟨rfl, rfl⟩
+    specialize (ih rfl)
+    rcases ih with ⟨N', rfl⟩
+    exact ⟨app _ _, rfl⟩
+  | app2 _p1 ih =>
+    intros i M H
+    cases M <;> simp [lift] at H
+    rcases H with ⟨rfl, rfl⟩
+    specialize (ih rfl)
+    rcases ih with ⟨N', rfl⟩
+    exact ⟨app _ _, rfl⟩
+  | beta =>
+    intros i M H
+    cases M with simp [lift] at H | app l r => _
+    rcases H with ⟨H, rfl⟩
+    cases l with simp [lift] at H | lam s t => _
+    rcases H with ⟨rfl, rfl⟩
+    exists (subst 0 r t)
+    rw [lift_subst]
+    split; try cutsat
+    rfl
 
 theorem etaProperty : square StepEta StepEta
   (closeRef StepEta) (closeRef StepEta) :=
@@ -671,7 +729,8 @@ theorem etaProperty : square StepEta StepEta
   match p1, p2 with
   | StepEta.app1 s1, StepEta.app1 s2 =>
     let ⟨u, bla1, bla2⟩ := etaProperty s1 s2
-    ⟨app u _, liftRef (fun x => app x _) StepEta.app1 bla1, liftRef (fun x => app x _) StepEta.app1 bla2⟩
+    ⟨app u _, liftRef (fun x => app x _) StepEta.app1 bla1,
+      liftRef (fun x => app x _) StepEta.app1 bla2⟩
   | StepEta.app1 s1, StepEta.app2 s2 =>
     ⟨_, Or.inr (StepEta.app2 s2), Or.inr (StepEta.app1 s1)⟩
   | StepEta.app2 s1, StepEta.app1 s2 => -- REPEATED CASE
@@ -685,36 +744,31 @@ theorem etaProperty : square StepEta StepEta
   | StepEta.eta p, StepEta.eta p' =>
     ⟨_, Or.inl rfl, Or.inl (lift_injective (Eq.trans (Eq.symm p') p)) ⟩
   | StepEta.lam (StepEta.app1 s), StepEta.eta p => by
-    -- ⟨_, Or.inr (StepEta.eta (stepEtaZFree s zf)), Or.inr (substEta s)⟩
-    -- ⟨_, Or.inr (StepEta.eta p), _⟩
     subst_vars
-    -- sorry
-    -- exact ⟨_, Or.inr (StepEta.eta _), _⟩
-    constructor
-    constructor
-    · --
-      apply Or.inr
-      apply StepEta.eta
-      sorry
-    · --
-      sorry
-    · --
-      sorry
-  | StepEta.eta p, StepEta.lam (StepEta.app1 s) => -- REPEATED CASE
-    -- ⟨_, Or.inr (substEta s), Or.inr (StepEta.eta (stepEtaZFree s zf))⟩
-    ⟨_, Or.inr _, Or.inr _⟩
+    have s' := etaSubst2 0 dummy s
+    have ⟨N', p⟩ := stepEtaRespectsLift s
+    subst_vars
+    rw [subst_lift] at s'
+    refine ⟨_, Or.inr (StepEta.eta ?_), Or.inr s'⟩
+    rw [subst_lift]
+  | StepEta.eta p, StepEta.lam (StepEta.app1 s) => by -- REPEATED CASE
+    subst_vars
+    have s' := etaSubst2 0 dummy s
+    have ⟨N', p⟩ := stepEtaRespectsLift s
+    subst_vars
+    rw [subst_lift] at s'
+    refine ⟨_, Or.inr s', Or.inr (StepEta.eta ?_)⟩
+    rw [subst_lift]
   | @StepEta.alpha _ s M, StepEta.alpha => ⟨lam s M, Or.inr StepEta.alpha, Or.inr StepEta.alpha⟩
   | StepEta.alpha, StepEta.lam s => ⟨_, Or.inr (StepEta.lam s), Or.inr StepEta.alpha⟩
   | StepEta.lam s, StepEta.alpha => ⟨_, Or.inr StepEta.alpha, Or.inr (StepEta.lam s)⟩
   | StepEta.alpha, StepEta.eta p =>
-    -- ⟨_, Or.inr (StepEta.eta zf), Or.inl rfl⟩
-    ⟨_, Or.inr _, Or.inl rfl⟩
-  | StepEta.eta p, StepEta.alpha =>
-    -- ⟨_, Or.inl rfl, Or.inr (StepEta.eta zf)⟩
-    ⟨_, Or.inl rfl, Or.inr _⟩
+    ⟨_, Or.inr (StepEta.eta p), Or.inl rfl⟩
+  | StepEta.eta p, StepEta.alpha => -- REPEATED CASE
+    ⟨_, Or.inl rfl, Or.inr (StepEta.eta p)⟩
 
-theorem betaEtaCommuteProperty {Γ}
-  : square (@Step Γ) (@StepEta Γ) (closure (@StepEta Γ)) (closeRef (@Step Γ)) :=
+theorem betaEtaCommuteProperty
+  : square Step StepEta (closure StepEta) (closeRef Step) :=
     fun {t} {tLeft} {tRight} p1 p2 =>
     match p1, p2 with
     | Step.app1 p1, StepEta.app1 p2 =>
@@ -735,31 +789,34 @@ theorem betaEtaCommuteProperty {Γ}
     | Step.app2 p1, StepEta.app1 p2 => -- REPEATED CASE
       ⟨_, oneStep (StepEta.app1 p2)
           , Or.inr (Step.app2 p1)⟩
-    | Step.beta, StepEta.app2 p => ⟨_, subEta closure.refl (oneStep p), Or.inr Step.beta⟩
-    | Step.beta, StepEta.app1 (StepEta.lam p) => ⟨_, subEta (oneStep p) closure.refl, Or.inr Step.beta⟩
+    | Step.beta, StepEta.app2 p => ⟨_, etaSubst1 p, Or.inr Step.beta⟩
+    | Step.beta, StepEta.app1 (StepEta.lam p) =>
+      -- ⟨_, subEta (oneStep p) closure.refl, Or.inr Step.beta⟩
+      ⟨_, oneStep (etaSubst2 _ _ p), Or.inr Step.beta⟩
     | Step.beta, StepEta.app1 (StepEta.eta zf) => ⟨_, closure.refl, (by
-        rw [subLastZFree (d1 := dummy)]
+        subst_vars
+        simp [subst]
+        rw [subst_lift]
         apply Or.inl rfl
-        apply zf
         )⟩
-    | Step.lam (Step.app1 p), StepEta.eta zf => ⟨_, oneStep (StepEta.eta (stepZFree p zf)), Or.inr (substStep p)⟩
+    | Step.lam (Step.app1 s), StepEta.eta zf => by
+      subst_vars
+      have s' := substStep 0 dummy s
+      have ⟨N', p⟩ := stepRespectsLift s
+      subst_vars
+      rw [subst_lift] at s'
+      refine ⟨_, oneStep (StepEta.eta ?_), Or.inr s'⟩
+      rw [subst_lift]
     | Step.lam Step.beta, @StepEta.eta _ _ (lam s a) zf =>
       ⟨_,
-        oneStep (@StepEta.alpha _ _ s _),
+        oneStep (@StepEta.alpha _ s _),
         Or.inl (by
-        apply Exists.elim; apply (Iff.mpr lamRenFree zf); intro t proof
-        simp [subLast, subst]
-        rw [<- proof]
-        rw [renameSubst]
-        rw [renameSubst]
-        apply congrArg (fun sub => subst sub _)
-        apply funext
-        intro x
-        exact (match x with
-        | Var.zero => rfl
-        | Var.succ Var.zero => rfl
-        | Var.succ (Var.succ x') => rfl
-        ))⟩
+        --
+        simp [lift] at zf
+        rcases zf with ⟨rfl, rfl⟩
+        simp
+        apply subst_lift_2
+        )⟩
     | Step.beta, StepEta.app1 StepEta.alpha => ⟨_, closure.refl, Or.inr (Step.beta)⟩
     | Step.lam s, StepEta.alpha => ⟨_, oneStep StepEta.alpha, Or.inr (Step.lam s)⟩
 
@@ -767,7 +824,7 @@ theorem betaEtaCommuteProperty {Γ}
 ---------- Equivalence between Par and Step ------------------------------------
 --------------------------------------------------------------------------------
 
-theorem stepToPar {Γ} {t1 t2 : Term Γ}
+theorem stepToPar {t1 t2 : Term}
   (step : Step t1 t2) : Par t1 t2 :=
   match step with
   | Step.app1 s => Par.papp (stepToPar s) parRefl
@@ -775,7 +832,7 @@ theorem stepToPar {Γ} {t1 t2 : Term Γ}
   | Step.lam s => Par.plam (stepToPar s)
   | Step.beta => Par.pbeta parRefl parRefl
 
-theorem parToMultiStep {Γ} {t1 t2 : Term Γ}
+theorem parToMultiStep {t1 t2 : Term}
   (par : Par t1 t2) : closure Step t1 t2 :=
   match par with
   | Par.pvar => closure.refl
@@ -789,13 +846,13 @@ theorem parToMultiStep {Γ} {t1 t2 : Term Γ}
       (liftCsr (app _) Step.app2 (parToMultiStep s2)))
       (oneStep Step.beta)
 
-theorem multiParToMultiStep {Γ} {t1 t2 : Term Γ}
+theorem multiParToMultiStep {t1 t2 : Term}
   (par : closure Par t1 t2) : closure Step t1 t2 :=
   match par with
   | closure.refl => closure.refl
   | closure.cons s ss => transitivity (parToMultiStep s) (multiParToMultiStep ss)
 
-theorem multiStepToMultiPar {Γ} {t1 t2 : Term Γ}
+theorem multiStepToMultiPar {t1 t2 : Term}
   (par : closure Step t1 t2) : closure Par t1 t2 :=
   match par with
   | closure.refl => closure.refl
@@ -811,9 +868,9 @@ theorem diamondToProperty {A} {R : Relation A}
   fun s1 s2 =>
     let ⟨_, s2', s1'⟩ := d s1 s2
     ⟨_, oneStep s2', Or.inr s1'⟩
-theorem parConfluent {Γ} : confluent (@Par Γ) :=
+theorem parConfluent : confluent Par :=
   commutationLemma (diamondToProperty parDiamond)
-theorem stepConfluent {Γ} : confluent (@Step Γ) :=
+theorem stepConfluent : confluent Step :=
   fun s1 s2 =>
     let ⟨_, s2', s1'⟩ := parConfluent (multiStepToMultiPar s1) (multiStepToMultiPar s2)
     ⟨_, multiParToMultiStep s2', multiParToMultiStep s1'⟩
@@ -832,54 +889,12 @@ theorem propertyToProperty {A} {R : Relation A}
     let ⟨_, s2', s1'⟩ := sq s1 s2
     ⟨_, closeRefToClosure s2', s1'⟩
 
-theorem etaConfluent {Γ} : confluent (@StepEta Γ) :=
+theorem etaConfluent : confluent StepEta :=
   commutationLemma (propertyToProperty etaProperty)
 
-def AllStep {Γ} : Relation (Term Γ) := closure (union Step StepEta)
+def AllStep : Relation Term := closure (union Step StepEta)
 
-theorem confluence {Γ} : confluent (union (@Step Γ) StepEta) :=
+theorem confluence : confluent (union Step StepEta) :=
   commutativeUnion stepConfluent etaConfluent (commutationLemma betaEtaCommuteProperty)
 
 ---------------- definitions to be used in the quotient --------------
-
-def singleLift {Γ} (i : Var (succ Γ)) : Ren Γ (succ Γ) :=
-  match Γ, i with
-  | _, Var.zero => Var.succ
-  | Nat.succ Γ', Var.succ i' => ext (singleLift i')
-
-def lift {Γ} (i : Var (succ Γ)) (t : Term Γ) : Term (succ Γ) :=
-  rename (singleLift i) t
-
-theorem lift_app {Γ} {t1 t2 : Term Γ} (i : Var (succ Γ))
-  : lift i (app t1 t2) = app (lift i t1) (lift i t2) := by
-  simp [lift, rename]
-
-theorem lift_lam {Γ s} {t : Term (succ Γ)} (i : Var (succ Γ))
-  : lift i (lam s t) = lam s (lift (Var.succ i) t) := by
-  simp [lift, rename, singleLift]
-
--- something for var?
--- def singleSub {Γ} (i : Var (succ Γ)) (toSub : Term Γ) : Subst (succ Γ) Γ :=
-
-deriving instance BEq for Var
-
--- is there really NO simple recursive definition?
-def singleSub' {Γ Γ'} (r : Ren (succ Γ) Γ') (i : Var (succ Γ)) (toSub : Term Γ') : Subst (succ Γ) Γ' :=
-  match Γ, i with
-  | _, Var.zero => cons toSub _
-  | Nat.succ Γ', Var.succ i' =>
-    let x := singleSub i' toSub
-    _
-
-def singleSub {Γ} (i : Var (succ Γ)) (toSub : Term Γ) : Subst (succ Γ) Γ :=
-  fun i' =>
-    if i == i'
-      then toSub
-      else _
-  -- match Γ, i with
-  -- | _, Var.zero => _-- cons toSub ids
-  -- | Nat.succ Γ2, Var.succ i' => cons _ (singleSub' i' toSub)
-
-#check Term
-def sub : ∀{Γ}, Term Γ → Var Γ → Term Γ → Term Γ :=
-  fun t x toSub => subst _ t

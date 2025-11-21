@@ -24,12 +24,6 @@ instance Term.setoid : Setoid Term where
 
 def QTerm := Quotient Term.setoid
 
-#check Quotient.map
-
--- def liftCsr {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
---   (ctr : ∀ {x y}, R x y → R' (f x) (f y))
---   : closure R x y → closure R' (f x) (f y) :=
-
 theorem liftClosureUnion (f : Term → Term)
   (respectStep : ∀ {x y}, Step x y → Step (f x) (f y))
   (respectEta : ∀ {x y}, StepEta x y → StepEta (f x) (f y))
@@ -50,23 +44,24 @@ theorem respectStepLemma (f : Term → Term)
   exact ⟨f t, ⟨l', r'⟩⟩
 
 theorem respectClosureUnion2 (f : Term → Term → Term)
-  (respectStep1 : ∀ {y x x'}, Step x x' → Step (f x y) (f x' y))
-  (respectEta1 : ∀ {y x x'}, StepEta x x' → StepEta (f x y) (f x' y))
-  (respectStep2 : ∀ {x y y'}, Step y y' → Step (f x y) (f x y'))
-  (respectEta2 : ∀ {x y y'}, StepEta y y' → StepEta (f x y) (f x y'))
+  (respectStep1 : ∀ {y x x'}, Step x x' → closure Step (f x y) (f x' y))
+  (respectEta1 : ∀ {y x x'}, StepEta x x' → closure StepEta (f x y) (f x' y))
+  (respectStep2 : ∀ {x y y'}, Step y y' → closure Step (f x y) (f x y'))
+  (respectEta2 : ∀ {x y y'}, StepEta y y' → closure StepEta (f x y) (f x y'))
   : ∀{x x' y y'}, AllStep x x' → AllStep y y' → AllStep (f x y) (f x' y') := by
-  intros x x' y y' eq
-  refine (liftCsr2 f ?_ ?_ eq)
+  intros x x' y y' eqx eqy
+  apply closureClosure
+  refine (liftCsr2 f ?_ ?_ eqx eqy)
   · intros x x' y step
-    exact (liftUnion (fun x => f x y) respectStep1 respectEta1 step)
+    exact (unionClosureToClosureUnion (liftUnion (fun x => f x y) respectStep1 respectEta1 step))
   · intros x x' y step
-    exact (liftUnion (f x) respectStep2 respectEta2 step)
+    exact (unionClosureToClosureUnion (liftUnion (f x) respectStep2 respectEta2 step))
 
 theorem respectStepLemma2 (f : Term → Term → Term)
-  (respectStep1 : ∀ {y x x'}, Step x x' → Step (f x y) (f x' y))
-  (respectEta1 : ∀ {y x x'}, StepEta x x' → StepEta (f x y) (f x' y))
-  (respectStep2 : ∀ {x y y'}, Step y y' → Step (f x y) (f x y'))
-  (respectEta2 : ∀ {x y y'}, StepEta y y' → StepEta (f x y) (f x y'))
+  (respectStep1 : ∀ {y x x'}, Step x x' → closure Step (f x y) (f x' y))
+  (respectEta1 : ∀ {y x x'}, StepEta x x' → closure StepEta (f x y) (f x' y))
+  (respectStep2 : ∀ {x y y'}, Step y y' → closure Step (f x y) (f x y'))
+  (respectEta2 : ∀ {x y y'}, StepEta y y' → closure StepEta (f x y) (f x y'))
   : ∀⦃x x'⦄, x ≈ x' → ∀⦃y y'⦄, y ≈ y' → f x y ≈ f x' y' := by
   intros x x' eqx y y' eqy
   rcases eqx with ⟨tx, ⟨lx, rx⟩⟩
@@ -80,7 +75,8 @@ def lam (s : String) (t : QTerm) : QTerm :=
 
 def app (t1 t2 : QTerm) : QTerm :=
   Quotient.map₂ Term.app
-    (respectStepLemma2 Term.app Step.app1 StepEta.app1 Step.app2 StepEta.app2) t1 t2
+    (respectStepLemma2 Term.app (oneStep ∘ Step.app1) (oneStep ∘ StepEta.app1)
+      (oneStep ∘ Step.app2) (oneStep ∘ StepEta.app2)) t1 t2
 
 def var (i : Nat) : QTerm := Quotient.mk _ (Term.var i)
 
@@ -90,4 +86,5 @@ def lift2 (i : Nat) (t : QTerm) : QTerm :=
 
 def subst2 (i : Nat) (t1 t2 : QTerm) : QTerm :=
   Quotient.map₂ (subst i)
-    (respectStepLemma2 (subst i) _ _ (substStep _ _) (etaSubst2 _ _)) t1 t2
+    (respectStepLemma2 (subst i) substStep1 etaSubst1
+      (oneStep ∘ substStep2 _ _) (oneStep ∘ etaSubst2 _ _)) t1 t2

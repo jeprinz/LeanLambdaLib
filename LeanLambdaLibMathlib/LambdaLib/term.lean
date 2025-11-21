@@ -337,6 +337,12 @@ def transitivity {A} {R : Relation A} {x y z : A}
   | closure.refl => step2
   | closure.cons s ss => closure.cons s (transitivity ss step2)
 
+def closureClosure {A} {R : Relation A} {x y : A} (H : closure (closure R) x y)
+  : closure R x y :=
+  match H with
+  | .refl => closure.refl
+  | .cons a b => transitivity a (closureClosure b)
+
 def liftCsr {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
   (ctr : ∀ {x y}, R x y → R' (f x) (f y))
   : closure R x y → closure R' (f x) (f y) :=
@@ -509,63 +515,41 @@ theorem etaLift {i} {M M' : Term}
     intros
     apply StepEta.alpha
 
+theorem liftStep {i} {M M' : Term}
+  (step : Step M M')
+  : Step (lift i M) (lift i M') :=
+  match step with
+  | Step.app1 p => Step.app1 (liftStep p)
+  | Step.app2 p => Step.app2 (liftStep p)
+  | Step.lam p => Step.lam (liftStep p)
+  | Step.beta => by
+    simp [lift]
+    rw [lift_subst]
+    apply Step.beta
+
 theorem etaSubst1 {i} {N N'} {M : Term}
   (p : StepEta N N')
-  : closure StepEta (subst i N M) (subst i N' M) := by
-  revert i N N' p
-  induction M with
-  | var i =>
-    intros
-    simp [subst]
+  : closure StepEta (subst i N M) (subst i N' M) :=
+  match M with
+  | var i => by
     repeat' (first | simp [subst] | split | cutsat | apply closure.refl)
     apply oneStep
     assumption
-  | const c =>
-    intros
-    apply closure.refl
-  | lam s t ih =>
-    intros
-    simp [subst]
-    apply (liftCsr (lam _) StepEta.lam)
-    apply ih
-    apply etaLift
-    assumption
-  | app t1 t2 ih1 ih2 =>
-    intros
-    apply transitivity
-    · apply (liftCsr (fun x => app x _) StepEta.app1)
-      apply ih1
-      assumption
-    · apply (liftCsr (app _) StepEta.app2)
-      apply ih2
-      assumption
+  | const c => closure.refl
+  | lam s t => liftCsr (lam _) StepEta.lam (etaSubst1 (etaLift p))
+  | app t1 t2 => transitivity
+    (liftCsr (fun x => app x _) StepEta.app1 (etaSubst1 p))
+    (liftCsr (app _) StepEta.app2 (etaSubst1 p))
 
 theorem etaSubst2 (i N) {M M' : Term}
   (p : StepEta M M')
-  : StepEta (subst i N M) (subst i N M') := by
-  revert i N
-  induction p with
-  | lam _p ih =>
-    intros
-    simp [subst]
-    --
-    apply StepEta.lam
-    apply ih
-  | app1 _p1 ih =>
-    intros
-    simp [subst]
-    apply StepEta.app1
-    apply ih
-  | app2 _p1 ih =>
-    intros
-    simp [subst]
-    apply StepEta.app2
-    apply ih
-  | alpha =>
-    intros
-    apply StepEta.alpha
-  | @eta s M M' p =>
-    intros i N
+  : StepEta (subst i N M) (subst i N M') :=
+  match p with
+  | .app1 p => StepEta.app1 (etaSubst2 i N p)
+  | .app2 p => StepEta.app2 (etaSubst2 i N p)
+  | .lam p => StepEta.lam (etaSubst2 _ _ p)
+  | .alpha => StepEta.alpha
+  | @StepEta.eta s M M' p => by
     subst M
     simp [subst]
     have iamwritingaproof : subst (i + 1) (lift 0 N) (lift 0 M') = lift 0 (subst i N M') := by
@@ -575,6 +559,32 @@ theorem etaSubst2 (i N) {M M' : Term}
     rewrite [iamwritingaproof]
     apply StepEta.eta
     rfl
+
+theorem substStep2 (i N) {M M' : Term}
+  (step : Step M M')
+  : Step (subst i N M) (subst i N M') :=
+  match step with
+  | Step.app1 p => Step.app1 (substStep2 i N p)
+  | Step.app2 p => Step.app2 (substStep2 i N p)
+  | Step.lam p => Step.lam (substStep2 _ _ p)
+  | Step.beta => by
+    simp [subst]
+    rw [subst_subst] <;> try cutsat
+    apply Step.beta
+
+theorem substStep1 {i} {N N'} {M : Term}
+  (p : Step N N')
+  : closure Step (subst i N M) (subst i N' M) :=
+  match M with
+  | var i => by
+    repeat' (first | simp [subst] | split | cutsat | apply closure.refl)
+    apply oneStep
+    assumption
+  | const c => closure.refl
+  | lam s t => liftCsr (lam _) Step.lam (substStep1 (liftStep p))
+  | app t1 t2 => transitivity
+    (liftCsr (fun x => app x _) Step.app1 (substStep1 p))
+    (liftCsr (app _) Step.app2 (substStep1 p))
 
 theorem stepEtaRespectsLift {i : Nat} {M N : Term}
   (step : StepEta (lift i M) N)
@@ -625,30 +635,6 @@ theorem stepEtaRespectsLift {i : Nat} {M N : Term}
     exists (subst 0 dummy l)
     subst M'
     rfl
-
-theorem substStep (i N) {M M' : Term}
-  (step : Step M M')
-  : Step (subst i N M) (subst i N M') :=
-  match step with
-  | Step.app1 p => Step.app1 (substStep i N p)
-  | Step.app2 p => Step.app2 (substStep i N p)
-  | Step.lam p => Step.lam (substStep _ _ p)
-  | Step.beta => by
-    simp [subst]
-    rw [subst_subst] <;> try cutsat
-    apply Step.beta
-
-theorem liftStep {i} {M M' : Term}
-  (step : Step M M')
-  : Step (lift i M) (lift i M') :=
-  match step with
-  | Step.app1 p => Step.app1 (liftStep p)
-  | Step.app2 p => Step.app2 (liftStep p)
-  | Step.lam p => Step.lam (liftStep p)
-  | Step.beta => by
-    simp [lift]
-    rw [lift_subst]
-    apply Step.beta
 
 theorem stepRespectsLift {i : Nat} {M N : Term}
   (step : Step (lift i M) N)
@@ -766,7 +752,7 @@ theorem betaEtaCommuteProperty
         )⟩
     | Step.lam (Step.app1 s), StepEta.eta zf => by
       subst_vars
-      have s' := substStep 0 dummy s
+      have s' := substStep2 0 dummy s
       have ⟨N', p⟩ := stepRespectsLift s
       subst_vars
       rw [subst_lift] at s'

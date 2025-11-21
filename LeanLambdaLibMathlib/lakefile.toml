@@ -1,7 +1,7 @@
-name = "LeanLambdaLibMathlib"
+name = "LambdaLib"
 version = "0.1.0"
 keywords = ["math"]
-defaultTargets = ["LeanLambdaLibMathlib"]
+defaultTargets = ["LambdaLib"]
 
 [leanOptions]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
@@ -14,4 +14,4 @@ name = "mathlib"
 scope = "leanprover-community"
 
 [[lean_lib]]
-name = "LeanLambdaLibMathlib"
+name = "LambdaLib"

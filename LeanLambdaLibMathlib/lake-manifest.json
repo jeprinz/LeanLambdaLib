@@ -91,5 +91,5 @@
    "inputRev": "v4.25.0-rc2",
    "inherited": true,
    "configFile": "lakefile.toml"}],
- "name": "LeanLambdaLibMathlib",
+ "name": "LambdaLib",
  "lakeDir": ".lake"}

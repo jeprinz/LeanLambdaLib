@@ -344,6 +344,15 @@ def liftCsr {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
   | closure.refl => closure.refl
   | closure.cons xy yz => closure.cons (ctr xy) (liftCsr f ctr yz)
 
+def liftCsr2 {A} {B} {R : Relation A} {R' : Relation B} {x y x' y' : A} (f : A → A → B)
+  (ctr1 : ∀ {x x' y : A}, R x x' → R' (f x y) (f x' y))
+  (ctr2 : ∀ {x y y' : A}, R y y' → R' (f x y) (f x y'))
+  : closure R x x' → closure R y y' → closure R' (f x y) (f x' y') :=
+  fun s1 s2 => match s1, s2 with
+  | closure.refl, s2 => liftCsr _ ctr2 s2
+  | closure.cons xy yz, s2 =>
+    closure.cons (ctr1 xy) (liftCsr2 f ctr1 ctr2 yz s2)
+
 inductive union {A} (R S : Relation A) : A → A → Prop
 | r : ∀{x y}, R x y → union R S x y
 | s : ∀{x y}, S x y → union R S x y
@@ -627,6 +636,18 @@ theorem substStep (i N) {M M' : Term}
   | Step.beta => by
     simp [subst]
     rw [subst_subst] <;> try cutsat
+    apply Step.beta
+
+theorem liftStep {i} {M M' : Term}
+  (step : Step M M')
+  : Step (lift i M) (lift i M') :=
+  match step with
+  | Step.app1 p => Step.app1 (liftStep p)
+  | Step.app2 p => Step.app2 (liftStep p)
+  | Step.lam p => Step.lam (liftStep p)
+  | Step.beta => by
+    simp [lift]
+    rw [lift_subst]
     apply Step.beta
 
 theorem stepRespectsLift {i : Nat} {M N : Term}

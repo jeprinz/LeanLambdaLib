@@ -2,6 +2,9 @@
 -- i very roughly followed Nipkow (2001), although i did many parts differently
 
 import Mathlib.Tactic.ApplyFun
+-- import Mathlib.Tactic.LinArith
+
+namespace SynTerm
 
 inductive Constant
 | strConst : String -> Constant
@@ -585,7 +588,7 @@ theorem substStep1 {i} {N N'} {M : Term}
   | app t1 t2 => transitivity
     (liftCsr (fun x => app x _) Step.app1 (substStep1 p))
     (liftCsr (app _) Step.app2 (substStep1 p))
-
+ --
 theorem stepEtaRespectsLift {i : Nat} {M N : Term}
   (step : StepEta (lift i M) N)
   : exists N', N = lift i N' := by
@@ -851,3 +854,54 @@ theorem confluence : confluent (union Step StepEta) :=
 ---------------- definitions to be used in the quotient --------------
 
 def equiv (t1 t2 : Term) := ∃ t, AllStep t1 t /\ AllStep t2 t
+
+-- lifts from empty context to any context
+def liftMulti (n : Nat) (t : Term) : Term :=
+  match n with
+  | .zero => t
+  | .succ n' => lift 0 (liftMulti n' t)
+
+theorem liftMultiStep {i} {M M' : Term}
+  (step : Step M M')
+  : Step (liftMulti i M) (liftMulti i M') :=
+  match i with
+  | .zero => step
+  | .succ i' => liftStep (@liftMultiStep i' _ _ step)
+
+theorem liftMultiStepEta {i} {M M' : Term}
+  (step : StepEta M M')
+  : StepEta (liftMulti i M) (liftMulti i M') :=
+  match i with
+  | .zero => step
+  | .succ i' => etaLift (@liftMultiStepEta i' _ _ step)
+
+theorem liftLiftMulti (n i : Nat) (H : i ≤ n) (t : Term)
+  : lift i (liftMulti n t) = liftMulti (Nat.succ n) t := by
+  revert i t
+  induction n with
+  | zero =>
+    intros i H t
+    cases H
+    rfl
+  | succ n ih =>
+    intros i H t
+    simp [liftMulti]
+    cases i with
+    | zero => rfl
+    | succ i' =>
+      rw [lift_lift] <;> try cutsat
+      simp at *
+      rw [ih _ H]
+      rfl
+
+theorem substLiftMulti (n i : Nat) (t1 t2 : Term) (H : i < n)
+  : subst i t1 (liftMulti n t2) = liftMulti (Nat.pred n) t2 := by
+  cases n with
+  | zero =>
+    cases H
+  | succ n' =>
+    rw [<- liftLiftMulti n' i] <;> try cutsat
+    rw [subst_lift]
+    rfl
+
+end SynTerm

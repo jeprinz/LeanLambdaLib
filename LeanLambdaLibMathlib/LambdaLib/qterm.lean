@@ -1,5 +1,8 @@
 import LambdaLib.term
 
+namespace QuotTerm
+open SynTerm
+
 instance Term.equivalence : Equivalence equiv where
   refl := by
     intros t
@@ -70,6 +73,10 @@ theorem respectStepLemma2 (f : Term → Term → Term)
   have r' := respectClosureUnion2 f respectStep1 respectEta1 respectStep2 respectEta2 rx ry
   exact ⟨f tx ty, ⟨l', r'⟩⟩
 
+-----------------------------------------------------------------------------
+---- define the main constructions of quotiented terms ----------------------
+-----------------------------------------------------------------------------
+
 def lam (s : String) (t : QTerm) : QTerm :=
   Quotient.map (Term.lam s) (respectStepLemma (Term.lam s) Step.lam StepEta.lam) t
 
@@ -80,11 +87,114 @@ def app (t1 t2 : QTerm) : QTerm :=
 
 def var (i : Nat) : QTerm := Quotient.mk _ (Term.var i)
 
--- TODO: namespaces
-def lift2 (i : Nat) (t : QTerm) : QTerm :=
-  Quotient.map (lift i) (respectStepLemma (lift i) liftStep etaLift) t
+def const (c : Constant) : QTerm := Quotient.mk _ (Term.const c)
 
-def subst2 (i : Nat) (t1 t2 : QTerm) : QTerm :=
-  Quotient.map₂ (subst i)
-    (respectStepLemma2 (subst i) substStep1 etaSubst1
+def lift (i : Nat) (t : QTerm) : QTerm :=
+  Quotient.map (SynTerm.lift i) (respectStepLemma (SynTerm.lift i) liftStep etaLift) t
+
+def subst (i : Nat) (t1 t2 : QTerm) : QTerm :=
+  Quotient.map₂ (SynTerm.subst i)
+    (respectStepLemma2 (SynTerm.subst i) substStep1 etaSubst1
       (oneStep ∘ substStep2 _ _) (oneStep ∘ etaSubst2 _ _)) t1 t2
+
+def liftMulti (i : Nat) (t : QTerm) : QTerm :=
+  Quotient.map (SynTerm.liftMulti i) (respectStepLemma (SynTerm.liftMulti i)
+  liftMultiStep liftMultiStepEta) t
+
+-----------------------------------------------------------------------------
+---- equations over quotiented terms ----------------------------------------
+-----------------------------------------------------------------------------
+
+theorem lift_app {i t1 t2}
+  : lift i (app t1 t2) = app (lift i t1) (lift i t2) := by
+  apply Quotient.ind _ t1
+  apply Quotient.ind _ t2
+  intros
+  simp [lift, app, SynTerm.lift]
+
+theorem lift_lam {i s t} : lift i (lam s t) = lam s (lift (Nat.succ i) t) := by
+  apply Quotient.ind _ t
+  intros
+  simp [lift, lam, SynTerm.lift]
+
+theorem lift_var {k i} : lift k (var i) = var (if i >= k then Nat.succ i else i) := by
+  simp [lift, var, SynTerm.lift]
+
+theorem lift_const {k c} : lift k (const c) = const c := by
+  simp [lift, const, SynTerm.lift]
+
+theorem subst_app {i t t1 t2}
+  : subst i t (app t1 t2) = app (subst i t t1) (subst i t t2) := by
+  apply Quotient.ind _ t
+  apply Quotient.ind _ t1
+  apply Quotient.ind _ t2
+  intros
+  simp [subst, app, SynTerm.subst]
+
+theorem subst_lam {i s t t1} : subst i t (lam s t1) = lam s (subst (Nat.succ i) (lift 0 t) t1) := by
+  apply Quotient.ind _ t
+  apply Quotient.ind _ t1
+  intros
+  simp [subst, lift, lam, SynTerm.subst]
+
+theorem subst_var {k i t} : subst k t (var i)
+  = if k < i then var (Nat.pred i) else if i == k then t else var i := by
+  apply Quotient.ind _ t
+  intros
+  simp [subst, var, SynTerm.subst]
+  repeat' (first | split | trivial)
+
+theorem liftLiftMulti (n i : Nat) (H : i ≤ n) (t : QTerm)
+  : lift i (liftMulti n t) = liftMulti (Nat.succ n) t := by
+  apply Quotient.ind _ t
+  intros
+  simp [lift, liftMulti]
+  apply Quotient.sound
+  rw [SynTerm.liftLiftMulti n i H]
+  simp
+  apply refl
+
+theorem substLiftMulti (n i : Nat) (t1 t2 : QTerm) (H : i < n)
+  : subst i t1 (liftMulti n t2) = liftMulti (Nat.pred n) t2 := by
+  apply Quotient.ind _ t1
+  apply Quotient.ind _ t2
+  intros t1 t2
+  simp [subst, liftMulti]
+  apply Quotient.sound
+  rw [SynTerm.substLiftMulti n i t2 t1 H]
+  simp
+  apply refl
+
+theorem subst_const {k t c} : subst k t (const c) = const c := by
+  apply Quotient.ind _ t
+  simp [subst, const, SynTerm.subst]
+
+theorem beta {s} {N M : QTerm} : app (lam s N) M = subst 0 M N := by
+  apply Quotient.ind _ N
+  apply Quotient.ind _ M
+  intros N M
+  simp [subst, app, lam]
+  apply Quotient.sound
+  refine ⟨SynTerm.subst 0 N M, ⟨?_, ?_⟩⟩
+  · apply oneStep
+    apply union.r
+    apply Step.beta
+  · apply closure.refl
+
+theorem eta {s} {M : QTerm} : lam s (app (lift 0 M) (var 0)) = M := by
+  apply Quotient.ind _ M
+  intros M
+  simp [lam, lift, var, app, lam]
+  apply Quotient.sound
+  refine ⟨M, ⟨?_, ?_⟩⟩
+  · apply oneStep
+    apply union.s
+    apply StepEta.eta
+    rfl
+  · apply closure.refl
+
+-----------------------------------------------------------------------------
+---- fancy syntax -----------------------------------------------------------
+-----------------------------------------------------------------------------
+
+end QuotTerm

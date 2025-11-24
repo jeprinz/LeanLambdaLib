@@ -181,6 +181,12 @@ theorem subst_const {k t c} : subst k t (const c) = const c := by
   apply Quotient.ind _ t
   simp [subst, const, SynTerm.subst]
 
+theorem liftMultiZero (t : QTerm) : liftMulti 0 t = t := by
+  apply Quotient.ind _ t
+  intros
+  simp [liftMulti]
+  rfl
+
 theorem beta {s} {N M : QTerm} : app (lam s N) M = subst 0 M N := by
   apply Quotient.ind _ N
   apply Quotient.ind _ M
@@ -214,10 +220,10 @@ syntax ident : lambda_scope
 
 -- this really does have to be a big number or some syntax doesn't work
 syntax:1500 (name := lambda_scoper) "<" lambda_scope:10 ">" : term
-syntax "(" lambda_scope ")" : lambda_scope
-syntax "{" term:10 "}" : lambda_scope -- TODO: big-weaken thing!
+syntax " (" lambda_scope ") " : lambda_scope
+syntax " {" term:10 "} " : lambda_scope -- TODO: big-weaken thing!
 syntax:60 lambda_scope:60 lambda_scope:61 : lambda_scope
-syntax "λ" ident+ ". " lambda_scope : lambda_scope
+syntax "λ " ident+ ". " lambda_scope : lambda_scope
 
 def firstLetterCapital (s : String) : Bool :=
   Char.isUpper (String.front s)
@@ -276,20 +282,25 @@ partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do
   match t with
   | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) s) t =>
     let s' : Expr := s
-    let (Expr.lit (Literal.strVal str)) := s' | `(< error1 >) -- throwError "inconcievable"
-    let `(< $s >) <- ppTermImpl t (str :: varnames) | `(< error2 >) -- throwError "inconcievable"
+    let (Expr.lit (Literal.strVal str)) := s' | `(< error1 >)
+    let `(< $s >) <- ppTermImpl t (str :: varnames) | `(< error2 >)
     let name : Syntax := mkIdent <| Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< λ $tname . $s>)
   | Expr.app (Expr.const `QuotTerm.const _)
     (Expr.app (Expr.const `SynTerm.Constant.strConst _) s) =>
     let s' : Expr := s
-    let (Expr.lit (Literal.strVal str)) := s' | `(< errorX >) -- throwError "inconcievable"
+    let (Expr.lit (Literal.strVal str)) := s' | `(< errorX >)
     let name : Syntax := mkIdent <| Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< $tname >)
   | Expr.app (Expr.const `QuotTerm.var _) v =>
     -- let i <- natExprToNat v
+    if match v with
+       | Expr.app (Expr.app (Expr.app (Expr.const `OfNat.ofNat _) _) _) _  => false
+       | _ => true
+    then failure
+    else
     let i <- unsafe evalExpr Nat (.const `Nat []) v
     match varnames[i]? with
     | Option.some str =>
@@ -302,8 +313,8 @@ partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do
       let tname : TSyntax _ := {raw := name}
       `(< $tname >)
   | Expr.app (Expr.app (Expr.const `QuotTerm.app _) t1) t2 =>
-    let `(< $s1 >) <- ppTermImpl t1 varnames | `(< errorX >) -- throwError "inconcievable"
-    let `(< $s2 >) <- ppTermImpl t2 varnames | `(< errorX >) -- throwError "inconcievable"
+    let `(< $s1 >) <- ppTermImpl t1 varnames | `(< errorX >)
+    let `(< $s2 >) <- ppTermImpl t2 varnames | `(< errorX >)
     let parena := match t1 with
       | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) _) _ => true
       | _ => false
@@ -320,7 +331,7 @@ partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do
   | Expr.app (Expr.app (Expr.const `QuotTerm.liftMulti _) _n) t =>
     let ts <- delab t
     `(< { $ts } >)
-  | _ => `(< Error >)
+  | _ => failure
 
 -- we can only trigger delaborators for top level things. so we need one for each constructor
 @[delab app.QuotTerm.app]
@@ -340,12 +351,17 @@ def delabVar : Delab := do
   let e <- getExpr
   ppTermImpl e []
 
+#check OfNat.ofNat
+-- set_option pp.rawOnError true
 #check <λ x y. {test_term}>
 #check <λ x. A> = <λ x y z. (x y)>
 #check <A B>
+#check <A>
 #check <(A B) (C (λ x. x))>
 #check <λ x . A>
 #check <λ x . x>
 #check <λ x y . x y>
+#check <(A)(B)>
+#check <(A B)(B)>
 
 end QuotTerm

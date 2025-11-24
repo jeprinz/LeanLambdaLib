@@ -904,4 +904,36 @@ theorem substLiftMulti (n i : Nat) (t1 t2 : Term) (H : i < n)
     rw [subst_lift]
     rfl
 
+lemma constStep' {c t} (step : (union Step StepEta) (const c) t) : t = const c := by
+  cases step with
+  | r step => cases step -- TODO: i don't know how cases solves this goal
+  | s step => cases step
+
+theorem constStep {c t} (step : AllStep (const c) t) : t = const c := by
+  generalize eqn : (const c) = t1 at *
+  induction step with
+  | refl => rfl
+  | cons s ss ih =>
+    subst_vars
+    have s := constStep' s
+    subst_vars
+    apply ih
+    rfl
+
+lemma varStep' {i t} (step : (union Step StepEta) (var i) t) : t = var i := by
+  cases step with
+  | r step => cases step -- TODO: i don't know how cases solves this goal
+  | s step => cases step
+
+theorem varStep {i t} (step : AllStep (var i) t) : t = var i := by
+  generalize eqn : (var i) = t1 at *
+  induction step with
+  | refl => rfl
+  | cons s ss ih =>
+    subst_vars
+    have s := varStep' s
+    subst_vars
+    apply ih
+    rfl
+
 end SynTerm

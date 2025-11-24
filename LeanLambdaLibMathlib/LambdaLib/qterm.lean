@@ -211,6 +211,63 @@ theorem eta {s} {M : QTerm} : lam s (app (lift 0 M) (var 0)) = M := by
     rfl
   · apply closure.refl
 
+theorem alpha {s1 s2} {t : QTerm} : lam s1 t = lam s2 t := by
+  apply Quotient.ind _ t
+  intros t
+  simp [lam]
+  apply Quotient.sound
+  refine ⟨Term.lam s1 t, ⟨?_, ?_⟩⟩
+  · apply closure.refl
+  · apply oneStep
+    apply union.s
+    apply StepEta.alpha
+
+theorem const_inj {c1 c2} (H : const c1 = const c2) : c1 = c2 := by
+  simp [const] at H
+  have H := Quotient.exact H
+  rcases H with ⟨t, l, r⟩
+  have l := constStep l
+  have r := constStep r
+  subst_vars
+  simp at r
+  assumption
+
+theorem var_inj {i1 i2} (H : var i1 = var i2) : i1 = i2 := by
+  simp [var] at H
+  have H := Quotient.exact H
+  rcases H with ⟨t, l, r⟩
+  have l := varStep l
+  have r := varStep r
+  subst_vars
+  simp at r
+  assumption
+
+theorem var_not_const {i c} (H : var i = const c) : False := by
+  simp [var, const] at H
+  have H := Quotient.exact H
+  rcases H with ⟨t, l, r⟩
+  have l := varStep l
+  have r := constStep r
+  subst_vars
+  simp at r
+
+theorem lam_body {t1 t2 s1 s2} (H : lam s1 t1 = lam s2 t2) : t1 = t2 := by
+  have H := congrArg (lift 0) H
+  have H := congrArg (fun t => app t (var 0)) H
+  simp at H
+  simp [lift_lam, beta] at H
+  revert H
+  apply Quotient.ind _ t1
+  apply Quotient.ind _ t2
+  intros t1 t2 H
+  simp [subst, lift, var] at H
+  repeat rw [<- SynTerm.subst_lift_2] at H
+  assumption
+
+-- TODO: i could put strings on the vars, which don't do anything and there would be an
+-- equivalence rule for changing them around.
+-- unlike alpha equivalence, it wouldn't be needed for confluence of other stuff maybe?
+
 -----------------------------------------------------------------------------
 ---- fancy syntax -----------------------------------------------------------
 -----------------------------------------------------------------------------
@@ -282,15 +339,15 @@ partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do
   match t with
   | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) s) t =>
     let s' : Expr := s
-    let (Expr.lit (Literal.strVal str)) := s' | `(< error1 >)
-    let `(< $s >) <- ppTermImpl t (str :: varnames) | `(< error2 >)
+    let (Expr.lit (Literal.strVal str)) := s' | failure
+    let `(< $s >) <- ppTermImpl t (str :: varnames) | failure
     let name : Syntax := mkIdent <| Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< λ $tname . $s>)
   | Expr.app (Expr.const `QuotTerm.const _)
     (Expr.app (Expr.const `SynTerm.Constant.strConst _) s) =>
     let s' : Expr := s
-    let (Expr.lit (Literal.strVal str)) := s' | `(< errorX >)
+    let (Expr.lit (Literal.strVal str)) := s' | failure
     let name : Syntax := mkIdent <| Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< $tname >)
@@ -313,8 +370,8 @@ partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do
       let tname : TSyntax _ := {raw := name}
       `(< $tname >)
   | Expr.app (Expr.app (Expr.const `QuotTerm.app _) t1) t2 =>
-    let `(< $s1 >) <- ppTermImpl t1 varnames | `(< errorX >)
-    let `(< $s2 >) <- ppTermImpl t2 varnames | `(< errorX >)
+    let `(< $s1 >) <- ppTermImpl t1 varnames | failure
+    let `(< $s2 >) <- ppTermImpl t2 varnames | failure
     let parena := match t1 with
       | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) _) _ => true
       | _ => false

@@ -247,3 +247,13 @@ def delabVar : Delab := do
 #reduce <λ x . x>
 #reduce <λ x y . x y>
 #reduce (LTerm.var Var.zero : LTerm (Nat.succ Nat.zero))
+
+
+inductive Test : Type where
+| testc : Test
+
+@[delab app.Test.testc]
+def delabTest : Delab := do
+  `(testthinghere2)
+
+#reduce Test.testc

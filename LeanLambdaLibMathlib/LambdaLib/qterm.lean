@@ -1,5 +1,3 @@
-module
-
 import LambdaLib.term
 import Qq
 import Lean
@@ -94,18 +92,23 @@ def app (t1 t2 : QTerm) : QTerm :=
     (respectStepLemma2 Term.app (oneStep ∘ Step.app1) (oneStep ∘ StepEta.app1)
       (oneStep ∘ Step.app2) (oneStep ∘ StepEta.app2)) t1 t2
 
+@[irreducible]
 def var (i : Nat) : QTerm := Quotient.mk _ (Term.var i)
 
+@[irreducible]
 def const (c : Constant) : QTerm := Quotient.mk _ (Term.const c)
 
+@[irreducible]
 def lift (i : Nat) (t : QTerm) : QTerm :=
   Quotient.map (SynTerm.lift i) (respectStepLemma (SynTerm.lift i) liftStep etaLift) t
 
+@[irreducible]
 def subst (i : Nat) (t1 t2 : QTerm) : QTerm :=
   Quotient.map₂ (SynTerm.subst i)
     (respectStepLemma2 (SynTerm.subst i) substStep1 etaSubst1
       (oneStep ∘ substStep2 _ _) (oneStep ∘ etaSubst2 _ _)) t1 t2
 
+@[irreducible]
 def liftMulti (i : Nat) (t : QTerm) : QTerm :=
   Quotient.map (SynTerm.liftMulti i) (respectStepLemma (SynTerm.liftMulti i)
   liftMultiStep liftMultiStepEta) t
@@ -232,7 +235,9 @@ partial def elabTermImplS (e : Syntax) (varnames: List String) : MetaM (TSyntax 
     if firstLetterCapital str
       then `(const (Constant.strConst $strlit))
       else do
-        let i := Lean.quote (varnames.idxOf str)
+        -- TODO: here is where i should program in an error message if its out of bounds,
+        -- idxOf just silently returns a value if its not in the list
+        let i := Lean.quote (varnames.length - varnames.idxOf str - 1)
         `(var $i)
   | `(< λ $xs:ident* . $body:lambda_scope >) => do
     let mut varnames := varnames
@@ -258,6 +263,11 @@ def elabTerm : TermElab := fun stx typ? => do
   let res <- (elabTermImplS stx [])
   Term.elabTerm res (Option.some q(QTerm))
 
+#reduce (1 = 2)
+#reduce ((<λ x y . A B>) = (<C>) : Prop)
+#reduce (<λ x. A>) = (<λ x y z. (x y z q r s)>)
+#reduce (<λ x. A>) = (<λ x y z. (x y)>)
+
 #reduce < λ x y . A B >
 #reduce < λ x y . x y >
 -- #reduce <λ x y . z >
@@ -272,34 +282,31 @@ def elabTerm : TermElab := fun stx typ? => do
 #reduce < λ x y z . y >
 #reduce <A B>
 
--- TODO: this syntax should actually apply to the quotiented terms instead of the deep embedding.
--- i do need to make sure that the pretty-printing can work with this encoding though
-
 -- the Nat.zero is just a dummy to make it stop complaining about type errors
-partial def ppTermImpl (t : Q(LTerm Nat.zero)) (varnames : List String) : MetaM (TSyntax `term) := do
+partial def ppTermImpl (t : Q(QTerm)) (varnames : List String) : MetaM (TSyntax `term) := do
 -- def ppTermImpl (t : Expr) (varnames : List String) : MetaM (TSyntax `term) := do
   match t with
-  | ~q(LTerm.lam $s $t) => do
+  | ~q(lam $s $t) => do
     let s' : Expr := s
     let (Expr.lit (Literal.strVal str)) := s' | `(< error1 >) -- throwError "inconcievable"
     let `(< $s >) <- ppTermImpl t (str :: varnames) | `(< error2 >) -- throwError "inconcievable"
     let name : Syntax := mkIdent $ Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< λ $tname . $s>)
-  | ~q(LTerm.const $s) => do
+  | ~q(const (Constant.strConst $s)) => do
     let s' : Expr := s
     let (Expr.lit (Literal.strVal str)) := s' | `(< errorX >) -- throwError "inconcievable"
     let name : Syntax := mkIdent $ Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< $tname >)
-  | ~q(LTerm.var $i) => `(< errorX >) -- throwError "todo"
+  | ~q(var $i) => `(< errorX >) -- throwError "todo"
     -- do
     --   -- let str:= x.getString
     --   let str:= "example"
     --   let name : Syntax := mkIdent $ Name.mkSimple str
     --   let tname : TSyntax _ := {raw := name}
     --   `(< $tname >)
-  | ~q(LTerm.app $t1 $t2) => do
+  | ~q(app $t1 $t2) => do
     let `(< $s1 >) <- ppTermImpl t1 varnames | `(< errorX >) -- throwError "inconcievable"
     let `(< $s2 >) <- ppTermImpl t2 varnames | `(< errorX >) -- throwError "inconcievable"
     `(< $s1 $s2 >)
@@ -322,73 +329,91 @@ partial def ppTermImpl (t : Q(LTerm Nat.zero)) (varnames : List String) : MetaM 
     | _ => `(< hereother >)
   )
 
-def varExprToNat (var : Expr) : Nat :=
-  match var with
-  | Expr.app (Expr.const `Var.zero _) _ => 0
-  | Expr.app (Expr.app (Expr.const `Var.succ _) _) i => Nat.succ (varExprToNat i)
-  | _ => 0
+-- def natExprToNat (var : Expr) : MetaM Nat :=
+--   match var with
+--   | Expr.app (Expr.const `Nat.zero _) _ => return 0
+--   | Expr.app (Expr.const `Nat.succ _) i => do
+--     let rec <- natExprToNat i
+--     return Nat.succ rec
+--   | _ => throwError "not a number"
 
 partial def ppTermImpl2 (t : Expr) (varnames : List String) : MetaM (TSyntax `term) := do
 -- def ppTermImpl (t : Expr) (varnames : List String) : MetaM (TSyntax `term) := do
   match t with
-  | Expr.app (Expr.app (Expr.app (Expr.const `LTerm.lam _) _) s) t =>
+  | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) s) t =>
     let s' : Expr := s
     let (Expr.lit (Literal.strVal str)) := s' | `(< error1 >) -- throwError "inconcievable"
     let `(< $s >) <- ppTermImpl2 t (str :: varnames) | `(< error2 >) -- throwError "inconcievable"
-    let name : Syntax := mkIdent $ Name.mkSimple str
+    let name : Syntax := mkIdent <| Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< λ $tname . $s>)
-  | Expr.app (Expr.app (Expr.const `LTerm.const _) _) s =>
+  | Expr.app (Expr.const `QuotTerm.const _)
+    (Expr.app (Expr.const `SynTerm.Constant.strConst _) s) =>
     let s' : Expr := s
     let (Expr.lit (Literal.strVal str)) := s' | `(< errorX >) -- throwError "inconcievable"
-    let name : Syntax := mkIdent $ Name.mkSimple str
+    let name : Syntax := mkIdent <| Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< $tname >)
-  -- | ~q(LTerm.var $i) => `(< errorX >) -- throwError "todo"
-  | Expr.app (Expr.app (Expr.const `LTerm.var _) _) v =>
-    let i := varExprToNat v
-    match varnames[varnames.length - i - 1]? with
+  | Expr.app (Expr.const `QuotTerm.var _) v =>
+    -- let i <- natExprToNat v
+    let i <- unsafe evalExpr Nat (.const `Nat []) v
+    match varnames[i]? with
     | Option.some str =>
-      let name : Syntax := mkIdent $ Name.mkSimple str
+      let name : Syntax := mkIdent <| Name.mkSimple str
       let tname : TSyntax _ := {raw := name}
       `(< $tname >)
     | Option.none =>
       let str := "freevar".append i.toSubscriptString
-      let name : Syntax := mkIdent $ Name.mkSimple str
+      let name : Syntax := mkIdent <| Name.mkSimple str
       let tname : TSyntax _ := {raw := name}
       `(< $tname >)
-  | Expr.app (Expr.app (Expr.app (Expr.const `LTerm.app _) _) t1) t2 =>
+  | Expr.app (Expr.app (Expr.const `QuotTerm.app _) t1) t2 =>
     let `(< $s1 >) <- ppTermImpl2 t1 varnames | `(< errorX >) -- throwError "inconcievable"
     let `(< $s2 >) <- ppTermImpl2 t2 varnames | `(< errorX >) -- throwError "inconcievable"
     `(< $s1 $s2 >)
   | _ => `(< Error >)
 
 -- we can only trigger delaborators for top level things. so we need one for each constructor
-@[delab app.LTerm.app]
+@[delab app.QuotTerm.app]
 def delabApp : Delab := do
   let e <- getExpr
   ppTermImpl2 e []
-@[delab app.LTerm.lam]
+@[delab app.QuotTerm.lam]
 def delabLam : Delab := do
   let e <- getExpr
   ppTermImpl2 e []
-@[delab app.LTerm.const]
+@[delab app.QuotTerm.const]
 def delabConst : Delab := do
   let e <- getExpr
   ppTermImpl2 e []
-@[delab app.LTerm.var]
+@[delab app.QuotTerm.var]
 def delabVar : Delab := do
   let e <- getExpr
   ppTermImpl2 e []
 
+set_option pp.rawOnError true
 -- see syntaxtest.lean for how to fix parenthesization
-#reduce <A>
+#reduce (<A>) = (<A>)
+#reduce (<λ x. A>) = (<λ x y z. (x y)>)
 #reduce <A B>
 #reduce <A (B C)>
 #reduce <λ x . A>
 #reduce <λ x . x>
 #reduce <λ x y . x y>
-#reduce (LTerm.var Var.zero : LTerm (Nat.succ Nat.zero))
+-- #reduce (Var.zero : LTerm (Nat.succ Nat.zero))
 
+theorem testThing : (fun x => True) (<λ x y . A B>) := by
+  --
+  sorry
+
+
+inductive Test : Type where
+| testc : Test
+
+@[delab app.QuotTerm.Test.testc]
+def delabTest : Delab := do
+  `(testthinghere2)
+
+#reduce Test.testc
 
 end QuotTerm

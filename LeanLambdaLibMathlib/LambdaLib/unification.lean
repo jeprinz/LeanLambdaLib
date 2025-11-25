@@ -77,21 +77,16 @@ then it can simp by that
 see: https://lean-lang.org/theorem_proving_in_lean4/Type-Classes/#decidable-propositions
 -/
 
-inductive Lhs : Type where
-| var : Nat → Lhs
-| const : SynTerm.Constant → Lhs
-
 open SynTerm
 
-inductive NeutralWithArity : Lhs → Nat → Term → Prop where
-| const : ∀{c}, NeutralWithArity (Lhs.const c) 0 (Term.const c)
-| var : ∀{n}, NeutralWithArity (Lhs.var n) 0 (Term.var n)
-| app : ∀{lhs t a arg}, NeutralWithArity lhs a t
-  → NeutralWithArity lhs (Nat.succ a) (Term.app t arg)
+inductive Neutral : Term → Prop where
+| const : ∀{c}, Neutral (Term.const c)
+| var : ∀{n}, Neutral (Term.var n)
+| app : ∀{t arg}, Neutral t → Neutral (Term.app t arg)
 
-theorem stepNeutral {lhs a t1 t2} (step : (union Step StepEta) t1 t2)
-  (H : NeutralWithArity lhs a t1)
-  : NeutralWithArity lhs a t2 := by
+theorem stepNeutral {t1 t2} (step : (union Step StepEta) t1 t2)
+  (H : Neutral t1)
+  : Neutral t2 := by
   cases step with
   | r step => cases step with
     | app1 step =>
@@ -119,35 +114,124 @@ theorem stepNeutral {lhs a t1 t2} (step : (union Step StepEta) t1 t2)
       assumption
     | _ => cases H
 
-theorem allstepNeutral {lhs a t1 t2} (step : AllStep t1 t2)
-  (H : NeutralWithArity lhs a t1)
-  : NeutralWithArity lhs a t2 := by
+theorem allstepNeutral {t1 t2} (step : AllStep t1 t2)
+  (H : Neutral t1)
+  : Neutral t2 := by
   induction step with
   | refl => assumption
   | cons _ _ ih =>
     apply ih
     apply stepNeutral <;> assumption
 
-inductive QNeutralWithArity : Lhs → Nat → QTerm → Prop where
-| const : ∀{c}, QNeutralWithArity (Lhs.const c) 0 (const c)
-| var : ∀{n}, QNeutralWithArity (Lhs.var n) 0 (var n)
-| app : ∀{lhs t a arg}, QNeutralWithArity lhs a t → QNeutralWithArity lhs (Nat.succ a) (app t arg)
+lemma appStep' {a b t} (step : (union Step StepEta) (Term.app a b) t) (neut : Neutral a)
+  : ∃ a' b', t = Term.app a' b' ∧ Neutral a' := by
+  cases step with | r step => _ | s step => _ <;> cases step <;> (try (cases neut; done))
+    <;> try grind
+  · refine ⟨_, _, rfl, ?_⟩
+    apply (stepNeutral _ neut)
+    apply union.r
+    assumption
+  · refine ⟨_, _, rfl, ?_⟩
+    apply (stepNeutral _ neut)
+    apply union.s
+    assumption
 
-theorem liftNeutralWithArity {lhs a t}
-  : NeutralWithArity lhs a t ↔ QNeutralWithArity lhs a (Quotient.mk _ t) := by
-  apply Iff.intro
-  ·
-    intro H
-    induction H with
-    | const =>
-      apply QNeutralWithArity.const
-      --
-      sorry
-    | var => sorry
-    | app _ _ => sorry
-    --
-    sorry
-  · sorry
+theorem appStep {a b t} (step : AllStep (Term.app a b) t) (neut : Neutral a)
+  : ∃ a' b', t = Term.app a' b' := by
+  generalize eqn : (Term.app a b) = t1 at *
+  induction step generalizing a b with
+  | refl => grind
+  | cons s ss ih =>
+    subst_vars
+    have ⟨a', b', eq, neut'⟩ := appStep' s neut
+    subst_vars
+    apply (ih neut' rfl)
+
+inductive QNeutral : QTerm → Prop where
+| const : ∀{c}, QNeutral (const c)
+| var : ∀{n}, QNeutral (var n)
+| app : ∀{t arg}, QNeutral t → QNeutral (app t arg)
+
+theorem liftNeutralWithArity {t}
+  : Neutral t → QNeutral (Quotient.mk _ t) := by
+  intro H
+  induction H with
+  | @const c =>
+    have thing := @QNeutral.const c
+    unfold const at thing
+    assumption
+  | @var i =>
+    have thing := @QNeutral.var i
+    unfold var at thing
+    assumption
+  | @app a b qn =>
+    -- apply Quotient.ind _ a
+    have thing := @QNeutral.app ⟦a⟧ ⟦b⟧
+    simp [app] at thing
+    apply thing
+    assumption
+
+theorem lowerNeutralWithArity {q} (H : QNeutral q)
+  : ∃ t, ⟦t⟧ = q ∧ Neutral t := by
+  induction H with
+  | @const c =>
+    exists .const c
+    simp [const]
+    repeat' constructor
+  | @var i =>
+    exists .var i
+    simp [var]
+    repeat' constructor
+  | @app a b qn ih =>
+    rcases ih with ⟨t, rfl, neu⟩
+    apply Quotient.ind _ b
+    intro b
+    exists .app t b
+    simp [app]
+    constructor
+    assumption
+
+-- i would need these three theorems to make the unification tactic work
+theorem app_ne_var {i a b} (qneut : QNeutral a) (eq : var i = app a b) : False := by
+  have ⟨t, eq2, neut⟩ := lowerNeutralWithArity qneut
+  subst_vars
+  revert eq
+  apply Quotient.ind _ b
+  intro b eq
+  simp [var, app] at eq
+  have ⟨t', l, r⟩ := Quotient.exact eq
+  rcases varStep l with rfl
+  rcases appStep r neut with ⟨_, _, eq⟩
+  cases eq
+
+theorem app_ne_const {c a b} (qneut : QNeutral a) (eq : const c = app a b) : False := by
+  have ⟨t, eq2, neut⟩ := lowerNeutralWithArity qneut
+  subst_vars
+  revert eq
+  apply Quotient.ind _ b
+  intro b eq
+  simp [const, app] at eq
+  have ⟨t', l, r⟩ := Quotient.exact eq
+  rcases constStep l with rfl
+  rcases appStep r neut with ⟨_, _, eq⟩
+  cases eq
+
+theorem app_fact {a b a' b'} (qneut : QNeutral a) (qneut' : QNeutral a')
+  (eq : app a b = app a' b') : a = a' /\ b = b' := by
+  have ⟨t, eq2, neut⟩ := lowerNeutralWithArity qneut
+  have ⟨t, eq2, neut'⟩ := lowerNeutralWithArity qneut'
+  subst_vars
+  revert eq
+  apply Quotient.ind _ b
+  apply Quotient.ind _ b'
+  intro b b' eq
+  simp [app] at eq
+  have ⟨t', l, r⟩ := Quotient.exact eq
+  rcases appStep l neut with ⟨_, _, eq⟩
+  rcases appStep r neut' with ⟨_, _, eq⟩
+  subst_vars
+  --
+  sorry
 
 -- i need a theorem that says that 2 neutrals of different arities are unequal?
 -- or maybe prove this first on SynTerm.Terms?

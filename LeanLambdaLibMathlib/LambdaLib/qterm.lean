@@ -301,11 +301,12 @@ partial def elabTermImplS (e : Syntax) (varnames: List String) : MetaM (TSyntax 
       else do
         -- TODO: here is where i should program in an error message if its out of bounds,
         -- idxOf just silently returns a value if its not in the list
-        let i := Lean.quote (varnames.length - varnames.idxOf str - 1)
+        -- let i := Lean.quote (varnames.length - varnames.idxOf str - 1)
+        let i := Lean.quote (varnames.idxOf str)
         `(var $i)
   | `(< λ $xs:ident* . $body:lambda_scope >) => do
     let mut varnames := varnames
-    for x in xs.reverse do
+    for x in xs do
       varnames := (toString x.getId) :: varnames
     let bodyarg <- `(< $body >)
     let mut acc <- elabTermImplS bodyarg varnames
@@ -333,6 +334,8 @@ def test_term := <λ x. A x x>
 #check (<λ x y. {test_term}>) = (<λ x y z. (x y)>)
 #check < λ x y . A B >
 #check < λ x y . x y >
+-- #check <λ n. λ s z. s (n s z)>
+#check <λ x. λ y. x y>
 #check <A B>
 
 partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do

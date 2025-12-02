@@ -246,3 +246,17 @@ theorem app_fact_rw {a b a' b'} (qneut : QNeutral a) (qneut' : QNeutral a')
   · intro ⟨eq1, eq2⟩
     subst_vars
     rfl
+
+-- these are to replace liftMulti with lifts when it is around a lam, app, var, or const.
+theorem liftMulti_lam_rw {s t i}
+  : liftMulti (Nat.succ i) (lam s t) = lift 0 (liftMulti i (lam s t)) := by
+  simp [QuotTerm.liftLiftMulti]
+theorem liftMulti_app_rw {t1 t2 i}
+  : liftMulti (Nat.succ i) (app t1 t2) = lift 0 (liftMulti i (app t1 t2)) := by
+  simp [QuotTerm.liftLiftMulti]
+theorem liftMulti_var_rw {i j}
+  : liftMulti (Nat.succ i) (var j) = lift 0 (liftMulti i (var j)) := by
+  simp [QuotTerm.liftLiftMulti]
+theorem liftMulti_const_rw {c}
+  : liftMulti (Nat.succ i) (const c) = lift 0 (liftMulti i (const c)) := by
+  simp [QuotTerm.liftLiftMulti]

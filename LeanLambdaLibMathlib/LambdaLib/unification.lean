@@ -7,11 +7,18 @@ open QuotTerm
 
 /-
 in this file, i'll define the actual unification tactic
+TODO: make an inductive predicate for z-free (generalize to nth-var-free), and use it
+as an assumption for eta rule as well as a
+zfree t1 → (t1 x = t2) = (t1 = λ x. t2)  rewrite rule.
+this will work with the repeat constructor dispatch.
 -/
 
 macro "normalize" : tactic => `(tactic|
-  simp [lift_app, lift_lam, lift_var, lift_const, subst_app, subst_lam, subst_var,
-      liftLiftMulti, substLiftMulti, subst_const, liftMultiZero, beta] at *
+  simp [lift_app, lift_lam, lift_var, lift_const,
+      subst_app, subst_lam, subst_var, subst_const,
+      liftLiftMulti, substLiftMulti, liftMultiZero,
+      liftMulti_lam_rw, liftMulti_app_rw, liftMulti_var_rw, liftMulti_const_rw,
+      beta] at *
 )
 
 macro "lambda_solve" : tactic => `(tactic|
@@ -49,8 +56,6 @@ abbrev one := <{succ} {zero}>
 abbrev two := <{succ} ({succ} {zero})>
 abbrev four := <{succ} ({succ} {two})>
 
-abbrev two2 := <λ s z. s (s z)>
-abbrev four2 := <λ s z. s (s (s (s z)))>
 
 example : <{plus} {zero} {zero}> = zero := by
   lambda_solve
@@ -63,6 +68,10 @@ example : <{plus} {two} {two}> = four := by
   unfold plus two succ zero four
   lambda_solve
 
+-- NOTE: it seems like abbrevs are more useful if they are not nested,
+-- otherwise some unfolds are necessary anyway
+abbrev two2 := <λ s z. s (s z)>
+abbrev four2 := <λ s z. s (s (s (s z)))>
 example : <{plus} {two2} {two2}> = four2 := by
   lambda_solve
   --
@@ -80,8 +89,14 @@ example : <{mult} {two} {two}> = four := by
   lambda_solve
   --
 
--- need rewrites for liftMulti
-example : <λ x. {plus} {zero} {zero}> = <λ x. zero> := by
-  unfold plus zero succ
+-- TODO: consider removing liftMultiZero? it shouldn't always go.
+example : <λ x. {plus} {zero} {zero}> = <λ x. {zero}> := by
   lambda_solve
   --
+
+/-
+note that we don't need a rule that combines two nested liftMultis.
+this is because either there is a lambda between them, in which case
+one of the liftMulti_*_rw rules eliminates the outer one,
+or there isn't, in which case the liftMultiZero rule eliminates the inner one.
+-/

@@ -8,6 +8,7 @@ namespace SynTerm
 
 inductive Constant
 | strConst : String -> Constant
+| natConst : Nat → Constant
 
 inductive Term : Type
 | var : Nat → Term

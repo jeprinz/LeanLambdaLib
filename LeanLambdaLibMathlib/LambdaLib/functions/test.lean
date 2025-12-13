@@ -2,6 +2,7 @@ import LambdaLib.functions.pmatch
 import LambdaLib.functions.prog
 import LambdaLib.qterm
 import LambdaLib.unification
+import Mathlib.Tactic.failIfNoProgress
 
 open QuotTerm
 
@@ -42,41 +43,55 @@ axiom test_rw.{u1, u2} {T : Type u1} {A : Type u2} (P : T → Prop)
 axiom test_rw_2.{u} {T : Type u} {t : T} : t = test
 
 theorem run_test_function : test_function <A C> = some <B D> := by
-  unfold test_function
-  unfold runProg
-  --
-  -- unfold test_function_part at 2
-  conv in (occs := 2) (test_function_part) => unfold test_function_part
-  simp
-  --
-  --
-  --
-  --
-  -- this should in principle evaluate any matches that can be evaluated
-  conv in (occs := *) (Pmatch _ _ _) => all_goals
-    simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2]
-  --
-  simp [runProgDefinitionRec, runProgDefinitionRet]
-  unfold runProg
-  simp [test_function_part]
-  --
-  --
-  -- conv in (occs := *) (Pmatch _ _ _) => all_goals
-    -- simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2]
-  --
-  -- here, the above 'should in principle' tactic doesn't work, so we need
-  -- to go under the l.h.s of the bind first. i think its a lean bug.
-  conv => {
-    conv in (occs := *) (Option.bind _ _) => all_goals
-    congr
-    · conv in (occs := *) (Pmatch _ _ _) => all_goals
-      simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2]
-  }
-  --
-  --
-  simp [runProgDefinitionRet]
-  simp [collectOptionDef]
+  simp [test_function, runProg, test_function_part]
+
+  -- trying to put it all in one big tactic
+  repeat (first
+    | simp [runProgDefinitionRet, runProgDefinitionRec, collectOptionDef]
+    | (conv in (occs := *) (Pmatch _ _ _) => all_goals
+        simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2])
+    | conv => {
+        conv in (occs := *) (Option.bind _ _) => all_goals
+        congr
+        · conv in (occs := *) (Pmatch _ _ _) => all_goals
+          simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2]
+      }
+    | simp [test_function_part, runProg]
+  )
   lambda_solve
+  -- --
+  -- -- unfold test_function_part at 2
+  -- conv in (occs := 2) (test_function_part) => unfold test_function_part
+  -- simp
+  -- --
+  -- --
+  -- --
+  -- --
+  -- -- this should in principle evaluate any matches that can be evaluated
+  -- -- conv in (occs := *) (Pmatch _ _ _) => all_goals
+  --   -- simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2]
+  -- --
+  -- -- simp [runProgDefinitionRec, runProgDefinitionRet]
+  -- unfold runProg
+  -- simp [test_function_part]
+  -- --
+  -- --
+  -- -- conv in (occs := *) (Pmatch _ _ _) => all_goals
+  --   -- simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2]
+  -- --
+  -- -- here, the above 'should in principle' tactic doesn't work, so we need
+  -- -- to go under the l.h.s of the bind first. i think its a lean bug.
+  -- conv => {
+  --   conv in (occs := *) (Option.bind _ _) => all_goals
+  --   congr
+  --   · conv in (occs := *) (Pmatch _ _ _) => all_goals
+  --     simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2]
+  -- }
+  -- --
+  -- --
+  -- simp [runProgDefinitionRet]
+  -- simp [collectOptionDef]
+  -- lambda_solve
 
 
 -- is there a way to get it to try something for every matching pattern in conv?

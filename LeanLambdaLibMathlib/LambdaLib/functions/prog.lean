@@ -2,8 +2,8 @@
 import Mathlib.Logic.Basic
 
 -- TODO: if i do the (A → Prop) version, then i don't need Type 2.
--- TODO: can i disable universe level checking to see if different universes are
--- causing the conv bug in test.lean?
+-- NOTE: i tested, and the universe level is not what is causing the conv problem in the
+-- other  file.
 inductive Prog (A B : Type) : Type 2 where
 | Ret : Option B → Prog A B
 | Rec : ∀ (I : Type), (I → A) → ((I → B) → Prog A B) → Prog A B

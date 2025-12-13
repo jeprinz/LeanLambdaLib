@@ -25,4 +25,4 @@ def elabTerm : TermElab := fun stx _typ? => do
   let thing <- `(fun x : Nat => $t == 10)
   Term.elabTerm thing (Option.some q(Nat))
 
-def test_thing : Nat -> Bool := < _ >
+-- def test_thing : Nat -> Bool := < _ >

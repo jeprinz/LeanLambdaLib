@@ -423,6 +423,6 @@ def delabVar : Delab := do
 #check <λ x y . x y>
 #check <(A)(B)>
 #check <(A B)(B)>
-def something := <λ x y. { _ }>
+-- def something := <λ x y. { _ }>
 
 end QuotTerm

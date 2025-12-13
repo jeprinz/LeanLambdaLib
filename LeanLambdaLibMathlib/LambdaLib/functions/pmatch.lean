@@ -1,10 +1,11 @@
 -- not sure what the standard way to do this in lean is, but here is a way:
-theorem choiceInd (T : Type) (P Q : T → Prop) x
+-- TODO: its Classical.some_spec₂ from mathlib, see other file.
+theorem choiceInd.{u} (T : Type u) (P Q : T → Prop) x
   (H : forall t, P t → Q t) : Q (@Classical.choose T P x) := by
   apply H
   apply Classical.choose_spec
 
-noncomputable def Pmatch {T A : Type} (P : T → Prop)
+noncomputable def Pmatch.{u1, u2} {T : Type u1} {A : Type u2} (P : T → Prop)
   (branch1 : T → A) (branch2 : A) : A := by
   refine (@Classical.choose _
     (fun a => (∃ t, P t ∧ branch1 t = a) ∨ ((¬ ∃ t, P t) ∧ a = branch2))
@@ -20,8 +21,7 @@ noncomputable def Pmatch {T A : Type} (P : T → Prop)
     apply Or.inr
     trivial
 
-#check Classical.choose_spec
-theorem PmatchDef1 {T A : Type} {P : T → Prop} {t : T} (H : P t)
+theorem PmatchDef1.{u1,u2} {T : Type u1} {A : Type u2} {P : T → Prop} {t : T} (H : P t)
   (unique : forall t1 t2, P t1 → P t2 → t1 = t2)
   (branch1 : T → A) (branch2 : A)
   : Pmatch P branch1 branch2 = branch1 t := by

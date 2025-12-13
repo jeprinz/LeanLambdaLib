@@ -30,7 +30,7 @@ theorem PmatchDef1.{u1,u2} {T : Type u1} {A : Type u2} {P : T → Prop} {t : T} 
   intros a c
   cases c <;> grind
 
-theorem PmatchDef2 {T A : Type} (P : T → Prop)
+theorem PmatchDef2.{u1, u2} {T : Type u1} {A : Type u2} (P : T → Prop)
   (branch1 : T → A) (branch2 : A)
   (ne : forall t, P t → False)
   : Pmatch P branch1 branch2 = branch2 := by

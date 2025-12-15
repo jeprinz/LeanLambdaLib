@@ -1,7 +1,8 @@
-import Mathlib.Tactic.failIfNoProgress -- why is this not in lean's standard library?
+-- import Mathlib.Tactic.failIfNoProgress -- why is this not in lean's standard library?
 
 import LambdaLib.qterm
 import LambdaLib.unificationFacts
+import Mathlib.Tactic
 
 open QuotTerm
 
@@ -27,6 +28,9 @@ macro "lambda_solve" : tactic => `(tactic|
     | simp [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2] at *
     | simp (disch := repeat constructor) [app_fact_rw, app_ne_const_rw, app_ne_var_rw] at *
     | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
+    | casesm* _ ∧ _
+    | casesm* QTerm × QTerm
+    | simp [*]
   )
 )
 
@@ -45,6 +49,9 @@ example (t1 t2 : QTerm) (H : <A {t1} > = <A {t2} >) : t1 = t2 := by
   lambda_solve
 
 example (H : <A B> = <A C>) : False := by
+  lambda_solve
+
+example (H : <A> = <B C>) : False := by
   lambda_solve
 
 abbrev zero := <λ s z. z>
@@ -100,3 +107,36 @@ this is because either there is a lambda between them, in which case
 one of the liftMulti_*_rw rules eliminates the outer one,
 or there isn't, in which case the liftMultiZero rule eliminates the inner one.
 -/
+
+example (t1 t2 : QTerm)
+  (H : <A B C> = <A {t1} {t2} >)
+  : <Res {t1} {t2}> = <Res B C> := by
+  lambda_solve
+
+example (t : Prod QTerm QTerm)
+  (H : <A B C> = <A {t.1} {t.2} >)
+  : <Res {t.1} {t.2}> = <Res B C> := by
+  lambda_solve
+
+example (t : Prod QTerm QTerm)
+  (H : <A B C> = <A {t.1} {t.2} >)
+  : t = ⟨<B>, <C>⟩ := by
+  lambda_solve
+
+-- TODO: make this not bad (if this works, then i can get rid of
+-- Pmatch2 and just do Pmatch with a product type)
+example (t1 t2 : QTerm × QTerm)
+  (H1 : <A B C> = <A {t1.1} {t1.2} >)
+  (H2 : <A B C> = <A {t2.1} {t2.2} >)
+  : t1 = t2 := by
+  lambda_solve
+
+-- TODO: make this work better
+example (t1 t2 t1' t2' : QTerm)
+  (H1 : <A B C> = <A {t1} {t2} >)
+  (H2 : <A B C> = <A {t1'} {t2'} >)
+  : t1 = t1' := by
+  lambda_solve
+
+-- useful list of all mathlib tactics
+-- https://github.com/haruhisa-enomoto/mathlib4-all-tactics/blob/main/all-tactics.md

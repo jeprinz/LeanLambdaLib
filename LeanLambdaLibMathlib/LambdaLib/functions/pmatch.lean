@@ -25,7 +25,6 @@ theorem PmatchDef1.{u1,u2} {T : Type u1} {A : Type u2} {P : T → Prop} {t : T} 
   (unique : forall t1 t2, P t1 → P t2 → t1 = t2)
   (branch1 : T → A) (branch2 : A)
   : Pmatch P branch1 branch2 = branch1 t := by
-  unfold Pmatch
   apply choiceInd _ _ (fun x => x = branch1 t) _ _
   intros a c
   cases c <;> grind
@@ -36,5 +35,56 @@ theorem PmatchDef2.{u1, u2} {T : Type u1} {A : Type u2} (P : T → Prop)
   : Pmatch P branch1 branch2 = branch2 := by
   unfold Pmatch
   apply choiceInd _ _ (fun x => x = branch2)
+  intros a c
+  cases c <;> grind
+
+noncomputable def Pmatch2.{u1, u2} {T1 T2 : Type u1} {A : Type u2} (P : T1 → T2 → Prop)
+  (branch1 : T1 → T2 → A) (branch2 : A) : A :=
+  @Pmatch (Prod T1 T2) _ (fun t ↦ P t.1 t.2) (fun t ↦ branch1 t.1 t.2) branch2
+
+theorem Pmatch2Def1.{u1,u2} {T1 T2 : Type u1} {A : Type u2} {P : T1 → T2 → Prop}
+  {t1 : T1} {t2 : T2} (H : P t1 t2)
+  (unique1 : forall t1 t2 t1' t2', P t1 t2 → P t1' t2' → t1 = t1')
+  (unique2 : forall t1 t2 t1' t2', P t1 t2 → P t1' t2' → t2 = t2')
+  (branch1 : T1 → T2 → A) (branch2 : A)
+  : Pmatch2 P branch1 branch2 = branch1 t1 t2 := by
+  apply choiceInd _ _ (fun x => x = branch1 t1 t2)
+  intros a c
+  cases c <;> simp at * <;> grind
+
+theorem Pmatch2Def2.{u1, u2} {T1 T2 : Type u1} {A : Type u2} (P : T1 → T2 → Prop)
+  (branch1 : T1 → T2 → A) (branch2 : A)
+  (ne : forall t1 t2, P t1 t2 → False)
+  : Pmatch2 P branch1 branch2 = branch2 := by
+  apply choiceInd _ _ (fun x => x = branch2)
+  intros a c
+  cases c <;> grind
+
+noncomputable def Pmatch3.{u1, u2} {T1 T2 T3 : Type u1} {A : Type u2} (P : T1 → T2 → T3 → Prop)
+  (branch1 : T1 → T2 → T3 → A) (branch2 : A) : A :=
+  @Pmatch (T1 × T2 × T3) _
+    (fun t ↦ P t.1 t.2.1 t.2.2) (fun t ↦ branch1 t.1 t.2.1 t.2.2) branch2
+
+noncomputable def Pif.{u} {A : Type u} (P : Prop)
+  (branch1 : A) (branch2 : A) : A :=
+  @Pmatch Unit _ (fun _ ↦ P) (fun _ ↦ branch1) branch2
+
+theorem PifDef1.{u} {A : Type u} {P : Prop} (H : P)
+  (branch1 branch2 : A)
+  : Pif P branch1 branch2 = branch1 := by
+  apply choiceInd _ _ (fun x => x = branch1) _ _
+  intros a c
+  cases c with
+  | inl _ => grind
+  | inr p =>
+    rcases p with ⟨p, _⟩
+    exfalso
+    apply p
+    exists .unit
+
+theorem PifDef2.{u} {A : Type u} {P : Prop} (H : ¬ P)
+  (branch1 branch2 : A)
+  : Pif P branch1 branch2 = branch2 := by
+  apply choiceInd _ _ (fun x => x = branch2) _ _
   intros a c
   cases c <;> grind

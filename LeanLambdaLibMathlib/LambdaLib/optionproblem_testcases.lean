@@ -8,7 +8,6 @@ import LambdaLib.functions.prog
 
 open QuotTerm
 
--- in this file, i'll define dependent type theory and prove canonicity
 
 namespace S
 abbrev pair := <λ t1 t2 p. p t1 t2>
@@ -203,8 +202,6 @@ example
   --
   sorry
 
-axiom mybind.{u_1, u_2} {α : Type u_1} {β : Type u_2} : Option α → (α → Option β) → Option β
-
 namespace TestError
 @[inline] protected def mybind2 : Option α → (α → Option β) → Option β
   | none,   _ => none
@@ -269,7 +266,7 @@ example
     (none : Option Nat)
   := by
   -- the `simp` made no progress error, but takes a long time to fail.
-  simp (disch := intros; lambda_solve; try trivial) only [Pmatch2Def1]
+  -- simp (disch := intros; lambda_solve; try trivial) only [Pmatch2Def1]
   --
   sorry
 

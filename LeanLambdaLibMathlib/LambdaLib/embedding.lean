@@ -2,6 +2,7 @@ import LambdaLib.qterm
 import LambdaLib.unification
 import LambdaLib.functions.pmatch
 import LambdaLib.functions.prog
+-- import Mathlib.Tactic
 
 open QuotTerm
 
@@ -99,97 +100,58 @@ inductive means_ctx : QTerm → QTerm → Prop where
   → s val
   → means_ctx <{S.pair} {env} {val}> <{S.cons} {ctx} {const (.natConst lvl)} {T}>
 
-example (bla) : means 1 <U> = bla := by
-  --
-  repeat (first
-    | simp only [means, means', means_prog]
-    | simp only [runProg, runProgDefinitionRet, runProgDefinitionRec, collectOptionDef]
-    | simp (disch := intros; lambda_solve; try trivial) only [PmatchDef1, PmatchDef2]
-    | simp (disch := intros; lambda_solve; try trivial) only [Pmatch2Def1, Pmatch2Def2]
-    | simp (disch := intros; lambda_solve; try trivial) only [PifDef1, PifDef2]
-  )
-  sorry
-
--- means 0 <U> is the empty set, so means <Pi U (λ a. U)> is all terms, since all terms
--- given any element of the empty set produce an element of the empty set.
-example (bla) : means 1 <Pi U (λ a. U)> = bla := by
-  --
-  -- simp [means, means', means_prog]
-  -- simp [runProg, runProgDefinitionRet, runProgDefinitionRec, collectOptionDef]
-  -- simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2]
-  -- simp (disch := intros; lambda_solve; try trivial) [Pmatch2Def1, Pmatch2Def2]
-  -- simp (disch := intros; lambda_solve; try trivial) [PifDef1, PifDef2]
-  simp only [means, means', means_prog, runProg,
-    runProgDefinitionRet, runProgDefinitionRec, collectOptionDef]
-  simp (disch := intros; lambda_solve; try trivial) only [Pmatch2Def1, Pmatch2Def2]
-  simp only [means, means', means_prog, runProg,
-    runProgDefinitionRet, runProgDefinitionRec, collectOptionDef]
-  simp (disch := intros; lambda_solve; try trivial) only [Pmatch2Def1, Pmatch2Def2]
-  simp (disch := intros; lambda_solve; try trivial) only [PifDef1, PifDef2]
-  simp only [means, means', means_prog, runProg,
-    runProgDefinitionRet, runProgDefinitionRec, collectOptionDef]
-  simp only [Option.bind]
-  simp
-  --
-  simp (disch := intros; lambda_solve; try trivial) only [PifDef1, PifDef2]
-  --
-  sorry
-
--- TODO: get this sort of things to work!
-example (SA SB A B)
-  (rec1 : means 1 A = some SA)
-  (rec2 : means 1 B = some SB)
-  : means 1 <Pi {A} (λ a. {B})> = some (fun f ↦ ∀ a, SA a → SB <{f} {a}>)
-  := by
-  --
-  sorry
-
-example (H : means 1 <U> = .none) : False := by
-  --
-  repeat (first
-    | simp [means, means', means_prog] at H
-    | simp [runProg, runProgDefinitionRet, runProgDefinitionRec, collectOptionDef] at H
-    | simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2] at H
-    | simp (disch := intros; lambda_solve; try trivial) [Pmatch2Def1, Pmatch2Def2] at H
-    | simp (disch := intros; lambda_solve; try trivial) [PifDef1, PifDef2] at H
-  )
-  -- TODO: why does the above compute if its in the goal but not if its in the ctx?
-  sorry
 
 -- set_option diagnostics true
 theorem fundamental_lemma {ctx T lvl t env}
   (mT : Typed ctx lvl T t)
   (mctx : means_ctx env ctx)
   : ∃ s, means (.succ lvl) <{T} {env}> = some s ∧ s <{t} {env}>
-  :=
-  match mT with
-  | .lambda ty body => by
+  := by
+  cases mT with
+  | lambda ty body =>
     have ⟨mty, mtyeq, bla⟩ := fundamental_lemma ty mctx
     --
+    -- repeat (first
+    --   | simp only [means, means', means_prog] at mtyeq
+    --   | simp only [runProg, runProgDefinitionRet, runProgDefinitionRec, collectOptionDef] at mtyeq
+    --   | simp (disch := clear mtyeq; intros; lambda_solve; try trivial) only
+    --     [PmatchDef1, PmatchDef2, Pmatch2Def1, Pmatch2Def2, PifDef1, PifDef2] at mtyeq
+    -- )
+    -- simp at mtyeq
+    -- subst mty
+    -- --
+    -- repeat (first
+    --   | simp only [means, means', means_prog] at bla
+    --   | simp only [runProg, runProgDefinitionRet, runProgDefinitionRec, collectOptionDef] at bla
+    --   | simp (disch := clear bla; intros; lambda_solve; try trivial) only
+    --     [PmatchDef1, PmatchDef2, Pmatch2Def1, Pmatch2Def2, PifDef1, PifDef2] at bla
+    -- )
+    -- unfold S.pi at bla
+    -- normalize
+    -- simp (disch := clear bla; intros; lambda_solve; try trivial) only
+      -- [PmatchDef1, PmatchDef2, Pmatch2Def1, Pmatch2Def2, PifDef1, PifDef2] at bla
     -- unfold means at mtyeq
     -- repeat (first
     --   | simp [means, means', means_prog] at mtyeq
     --   | simp [runProg, runProgDefinitionRet, runProgDefinitionRec, collectOptionDef] at mtyeq
-    --   | simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2] at mtyeq
-    --   | simp (disch := intros; lambda_solve; try trivial) [Pmatch2Def1, Pmatch2Def2] at mtyeq
+    -- --   | simp (disch := intros; lambda_solve; try trivial) [PmatchDef1, PmatchDef2] at mtyeq
+    --   -- | simp (disch := intros; lambda_solve; try trivial) [Pmatch2Def1, Pmatch2Def2] at mtyeq
     -- )
-    simp [means, means', means_prog, runProg] at mtyeq
-    simp (disch := intros; lambda_solve; try trivial) [Pmatch2Def2] at mtyeq
     --
     -- unfold S.U at mtyeq
     --
     --
     --
-    have thing := fundamental_lemma body (.in_cons mctx mtyeq bla)
+    have thing := fundamental_lemma body (.in_cons mctx _ bla)
     --
     sorry
-  | .app _ _ => sorry
-  | .var _ => sorry
-  | .Empty => sorry
-  | .U => sorry
-  | .Lift _ => sorry
-  | .lift _ => sorry
-  | .lower _ => sorry
+  | app _ _ => sorry
+  | var _ => sorry
+  | Empty => sorry
+  | U => sorry
+  | Lift _ => sorry
+  | lift _ => sorry
+  | lower _ => sorry
 
 /-
 [ ] - find classical source for this proof

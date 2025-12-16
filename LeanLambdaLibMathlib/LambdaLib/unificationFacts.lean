@@ -231,12 +231,22 @@ theorem app_ne_var_rw {i a b} (qneut : QNeutral a) : (var i = app a b) = False :
   · intros
     contradiction
 
+theorem app_ne_var_rw2 {i a b} (qneut : QNeutral a) : (app a b = var i) = False := by
+  rw (config := {occs := .pos [2]}) [propext (Iff.intro Eq.symm Eq.symm)]
+  apply app_ne_var_rw
+  assumption
+
 theorem app_ne_const_rw {c a b} (qneut : QNeutral a) : (const c = app a b) = False := by
   apply propext
   apply Iff.intro
   · apply app_ne_const qneut
   · intros
     contradiction
+
+theorem app_ne_const_rw2 {c a b} (qneut : QNeutral a) : (app a b = const c) = False := by
+  rw (config := {occs := .pos [2]}) [propext (Iff.intro Eq.symm Eq.symm)]
+  apply app_ne_const_rw
+  assumption
 
 theorem app_fact_rw {a b a' b'} (qneut : QNeutral a) (qneut' : QNeutral a')
   : (app a b = app a' b') = (a = a' /\ b = b') := by

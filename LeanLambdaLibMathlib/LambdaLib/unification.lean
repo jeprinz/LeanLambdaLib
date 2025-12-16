@@ -24,10 +24,16 @@ macro "normalize" : tactic => `(tactic|
 
 macro "lambda_solve" : tactic => `(tactic|
   repeat ( first
-    | simp at * -- TODO: figure out which lemmas this is using (relating to ∧) and write explicitly
+    -- | simp at * -- TODO: figure out which lemmas this is using (relating to ∧) and write explicitly
+    | simp only [Nat.succ_eq_add_one, zero_add, Nat.reduceAdd, Nat.not_ofNat_lt_one, ↓reduceIte,
+        Nat.reduceBEq, Bool.false_eq_true, lt_self_iff_false, BEq.rfl, ge_iff_le,
+        nonpos_iff_eq_zero, OfNat.ofNat_ne_zero, not_lt_zero', Nat.not_ofNat_le_one,
+        Nat.reduceLeDiff, Nat.reduceLT, zero_le] at *
     | normalize
-    | simp only [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2] at *
-    | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw] at *
+    | simp only [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2,
+      SynTerm.Constant.strConst.injEq, String.reduceEq] at *
+    | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
+      app_ne_const_rw2, app_ne_var_rw2] at *
     | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
     | casesm* _ ∧ _
     | casesm* QTerm × QTerm
@@ -147,3 +153,5 @@ example (t1 t2 t1' t2' : QTerm)
 --   : <Res {t1} {t2}> = <Res B C> := by
 --   lambda_solve
 --   --
+
+-- https://github.com/tristan-f-r/mathlib4-tactics

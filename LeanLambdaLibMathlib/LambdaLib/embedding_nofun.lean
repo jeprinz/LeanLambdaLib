@@ -1,0 +1,98 @@
+import LambdaLib.qterm
+import LambdaLib.unification
+-- import Mathlib.Tactic
+
+open QuotTerm
+
+-- in this file, i'll define dependent type theory and prove canonicity
+
+namespace S
+abbrev pair := <λ t1 t2 p. p t1 t2>
+abbrev proj1 := <λ p. p (λ x y. x)>
+abbrev proj2 := <λ p. p (λ x y. y)>
+-- TODO: i can make syntax for pair with a macro, which will run before the elaborator!
+
+-- contexts
+abbrev nil := <Nil>
+abbrev cons := <λ ctx lvl ty. Cons ctx lvl ty>
+
+-- variables
+abbrev zero := <λ env. {proj2} env>
+abbrev succ := <λ x env. x ({proj1} env)>
+
+abbrev pi := <λ x y env. Pi (x env) (λ a. y ({pair} env a))>
+abbrev U := <λ env. U>
+abbrev Empty := <λ env. Empty>
+abbrev Lift := <λ T env. Lift (T env)>
+
+abbrev lambda := <λ t env a. t ({pair} env a)>
+abbrev app := <λ t1 t2 env. (t1 env) (t2 env)>
+
+abbrev weaken := <λ t env. t ({proj1} env)>
+abbrev subLast := <λ t toSub env. t ({pair} env (toSub env))>
+end S
+
+inductive VarTyped : QTerm → Nat → QTerm → QTerm → Prop where
+| zero : ∀{ctx T lvl},
+  VarTyped <{S.cons} {ctx} {const (.natConst lvl)} {T}> lvl <{S.weaken} {T}> zero
+| succ : ∀{ctx A T s lvl1 lvl2}, VarTyped ctx lvl1 A s
+  → VarTyped <{S.cons} {ctx} {lvl2} {T}> lvl1 <{S.weaken} {A}> <{succ} {s}>
+
+-- context → level → type → term → prop
+inductive Typed : QTerm → Nat → QTerm → QTerm → Prop where
+| lambda : ∀{ctx A B s lvl}, Typed ctx (Nat.succ lvl) S.U <{S.pi} {A} {B}>
+  → Typed <{S.cons} {ctx} {const (.natConst lvl)} {A}> lvl B s
+  → Typed ctx lvl <{S.pi} {A} {B}> <{S.lambda} {s}>
+| app : ∀{ctx A B s1 s2 lvl}, Typed ctx lvl <{S.pi} {A} {B}> s1 → Typed ctx lvl A s2
+  → Typed ctx lvl <{S.subLast} {B} {s2}> <{S.app} {s1} {s2}>
+| var : ∀{ctx T t lvl}, VarTyped ctx lvl T t → Typed ctx lvl T t
+| Empty : ∀{ctx}, Typed ctx 1 S.U S.Empty
+| U : ∀{ctx lvl}, Typed ctx (2 + lvl) S.U S.U
+| Lift : ∀{ctx lvl T}, Typed ctx (1 + lvl) S.U T → Typed ctx (2 + lvl) S.U <{S.Lift} {T}>
+| lift : ∀{ctx lvl T t}, Typed ctx lvl T t → Typed ctx (1 + lvl) <{S.Lift} {T}> t
+| lower : ∀{ctx lvl T t}, Typed ctx (1 + lvl) <{S.Lift} {T}> t → Typed ctx lvl T t
+
+inductive In' (prev : QTerm → (QTerm → Prop) → Prop) : QTerm → (QTerm → Prop) → Prop :=
+| in_Pi : ∀ (s : QTerm → Prop) (F : QTerm → (QTerm → Prop)) A B,
+  In' prev A s
+  → (∀ a, s a → In' prev <{B} {a}> (F a))
+  → In' prev <Pi {A} {B}> (fun f ↦ ∀ a, s a → F a <{f} {a}>)
+| in_Empty : In' prev <Empty> (fun _ ↦ False)
+| in_Type : In' prev <U> (fun T ↦ ∃ S, prev T S)
+| in_Lift : ∀ T S, prev T S → In' prev <Lift {T}> S
+
+def In (lvl : Nat) : QTerm → (QTerm → Prop) → Prop :=
+  match lvl with
+  | .zero => fun _ _ ↦ False
+  | .succ lvl' => In' (In lvl')
+
+inductive In_ctx : QTerm → QTerm → Prop where
+| in_nil : In_ctx S.nil S.nil
+| in_cons : ∀ {env ctx lvl val T s},
+  In_ctx env ctx
+  → In (.succ lvl) <{T} {env}> s
+  → s val
+  → In_ctx <{S.pair} {env} {val}> <{S.cons} {ctx} {const (.natConst lvl)} {T}>
+
+theorem In_function (lvl T S1 S2) (out1 : In lvl T S1) (out2 : In lvl T S2) : S1 = S2 := by
+  induction lvl generalizing T with
+  | zero => grind [In]
+  | succ lvl' ih =>
+    induction out1 with
+    | in_Empty =>
+      generalize h : <Empty> = x at out2
+      cases out2 <;> lambda_solve
+    | in_Type =>
+      generalize h : <U> = x at out2
+      cases out2 <;> lambda_solve
+    | in_Lift T S uh =>
+      generalize h : <Lift {T}> = x at out2
+      cases out2 <;> try lambda_solve
+      apply ih <;> assumption
+    | in_Pi s F A B _ _ _ _ =>
+      generalize h : <Pi {A} {B}> = x at out2
+      cases out2 <;> lambda_solve
+      --
+      apply ih
+      --
+      sorry

@@ -114,17 +114,28 @@ theorem collectOptionDef {A B : Type} (f : A → B)
     apply funext
     assumption
 
+-- for reasons that i don't even begin to understand, the simp tactic has bizarre
+-- problems when i use the Option.bind from the standard library in combination with
+-- the a dispatch to lambda_solve.
+-- but replacing with this identical definition solves the problems.
+def mybind {α β} : Option α → (α → Option β) → Option β
+  | none,   _ => none
+  | some a, f => f a
+
+def mybindDef1 {A B} (a : A) (f : A → Option B) : mybind (.some a) f = f a := by rfl
+def mybindDef2 {A B} (f : A → Option B) : mybind none f = none:= by rfl
+
 theorem runProgDefinitionRec {A B : Type} {prog : A → Prog A B}
   {I : Type}
   {args : I → A}
   {rest : (I → B) → Prog A B}
   : runProgImpl prog (.Rec I args rest) =
-    Option.bind (collectOption (fun i => runProg prog (args i)))
+    mybind (collectOption (fun i => runProg prog (args i)))
       (fun f => runProgImpl prog (rest f))
   := by
   unfold runProgImpl chooseOption
   -- have to do the 'thing shuffle' for stupid reasons
-  generalize h1 : ((collectOption fun i ↦ runProg prog (args i)).bind fun f ↦
+  generalize h1 : (mybind (collectOption fun i ↦ runProg prog (args i)) fun f ↦
     Classical.choose _) = thing
   apply Classical.some_spec₂ (fun q => q = thing)
   subst thing
@@ -135,13 +146,13 @@ theorem runProgDefinitionRec {A B : Type} {prog : A → Prog A B}
     simp at *
     unfold collectOption chooseOption
     generalize h1 : (fun f ↦ Classical.choose _) = thing
-    apply Classical.some_spec₂ (fun q => none = Option.bind q thing)
+    apply Classical.some_spec₂ (fun q => none = mybind q thing)
     subst thing
     intros recVals p
     simp at *
     cases recVals with
     | none =>
-      simp at *
+      simp [mybindDef2] at *
     | some x =>
       simp at *
       apply Classical.some_spec₂
@@ -176,7 +187,7 @@ theorem runProgDefinitionRec {A B : Type} {prog : A → Prog A B}
         · ext
           rw [H]
     rw [collectOptionDef]
-    simp
+    simp [mybindDef1]
     apply Classical.some_spec₂
     intros ob fact
     cases ob <;> grind [runProgFunction]

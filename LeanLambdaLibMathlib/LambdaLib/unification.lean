@@ -15,7 +15,7 @@ this will work with the repeat constructor dispatch.
 -/
 
 macro "normalize" : tactic => `(tactic|
-  simp [lift_app, lift_lam, lift_var, lift_const,
+  simp only [lift_app, lift_lam, lift_var, lift_const,
       subst_app, subst_lam, subst_var, subst_const,
       liftLiftMulti, substLiftMulti, liftMultiZero,
       liftMulti_lam_rw, liftMulti_app_rw, liftMulti_var_rw, liftMulti_const_rw,
@@ -24,13 +24,14 @@ macro "normalize" : tactic => `(tactic|
 
 macro "lambda_solve" : tactic => `(tactic|
   repeat ( first
+    | simp at * -- TODO: figure out which lemmas this is using (relating to ∧) and write explicitly
     | normalize
-    | simp [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2] at *
-    | simp (disch := repeat constructor) [app_fact_rw, app_ne_const_rw, app_ne_var_rw] at *
+    | simp only [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2] at *
+    | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw] at *
     | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
     | casesm* _ ∧ _
     | casesm* QTerm × QTerm
-    | simp [*]
+    | simp [*] -- TODO: maybe i can use the `contextual' flag instead
   )
 )
 
@@ -140,3 +141,9 @@ example (t1 t2 t1' t2' : QTerm)
 
 -- useful list of all mathlib tactics
 -- https://github.com/haruhisa-enomoto/mathlib4-all-tactics/blob/main/all-tactics.md
+
+-- example (A t1 t2 : QTerm)
+--   (H : A = <A {t1} {t2} >)
+--   : <Res {t1} {t2}> = <Res B C> := by
+--   lambda_solve
+--   --

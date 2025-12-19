@@ -79,7 +79,7 @@ inductive In_ctx : QTerm → QTerm → Prop where
 theorem forall_ext.{u} (A : Sort u) (B B' : A → Prop) (_ : ∀ a, B a = B' a)
   : (∀ a, B a) = (∀ a, B' a) := by grind
 
-theorem In_function (lvl T S1 S2) (out1 : In lvl T S1) (out2 : In lvl T S2) : S1 = S2 := by
+theorem In_function {lvl T S1 S2} (out1 : In lvl T S1) (out2 : In lvl T S2) : S1 = S2 := by
   induction lvl generalizing T S1 S2 with
   | zero =>
     grind only [In]
@@ -99,13 +99,13 @@ theorem In_function (lvl T S1 S2) (out1 : In lvl T S1) (out2 : In lvl T S2) : S1
       generalize h : <Pi {A} {B}> = x at out2
       generalize s2eq : S2 = S2' at out2
       induction out2 with | in_Pi s' F' A' B' InA's' InB'aF' _ _ => _ | _ <;> lambda_solve
-      rw [<- ih_s s' InA's'] at *
+      rw [<- @ih_s s' InA's'] at *
       apply funext; intros f
       apply forall_ext; intros a
       apply forall_ext; intros Sa
-      rw [ih_F a Sa (F' a) (InB'aF' a Sa)]
+      rw [@ih_F a Sa (F' a) (InB'aF' a Sa)]
 
--- macro "[" t:term:10 "]" : term => `(let t' := t (by (convert $t' 1)))
+-- macro "[" t:term:10 "]" : term => `(by (convert $t <;> grind))
 
 theorem fundamental_lemma {ctx T lvl t env}
   (mT : Typed ctx lvl T t)
@@ -123,34 +123,21 @@ theorem fundamental_lemma {ctx T lvl t env}
     cases InABS with | in_Pi SA SB A' B' InA InB => _ | _ <;> try (lambda_solve <;> fail)
     exists (fun f ↦ ∀ a, SA a → SB a <{f} {a}>)
     apply And.intro
-    · have res := @In'.in_Pi (In lvl) SA SB A' B' InA InB
+    · refine (cast ?_ (@In'.in_Pi (In lvl) SA SB A' B' InA InB))
+      simp only [In]
       lambda_solve
-      apply res
     · simp
       intros a SAa
-      replace InB := InB a SAa
       lambda_solve
-      -- have h : A' = <{A} {env}> := by lambda_solve
-      -- have h2 : B' = <λ a . {B} ({S.pair} {env} a)> := by lambda_solve
-      -- subst A' B'
-      -- it would be convenient to have a cast macro that proves equalities of types
-      -- with a given tactic
       have h : (app A env) = <{A} {env}> := by lambda_solve
       rw [h] at InA
-      -- have test1 := (In_ctx.in_cons mctx InA SAa)
-      -- have test := fundamental_lemma body _
-      have bla := fundamental_lemma body
-        (by convert (In_ctx.in_cons mctx InA SAa) <;> lambda_solve
-            lambda_solve
-            unfold S.cons
-            lambda_solve
-            -- i need eta!
-            sorry
-            )
+      have test := fundamental_lemma body (In_ctx.in_cons mctx InA SAa)
+      have temp := fundamental_lemma body
+        (by convert (In_ctx.in_cons mctx InA SAa) <;> lambda_solve <;> try unfold S.cons <;> lambda_solve)
+      rcases temp with ⟨SBa, InSBa, thing⟩
       normalize
-      lambda_solve
-      --
-      sorry
+      rw [<- In_function InSBa (InB a SAa)]
+      assumption
   | app _ _ => sorry
   | var _ => sorry
   | Empty => sorry

@@ -1,6 +1,6 @@
 import LambdaLib.qterm
 import LambdaLib.unification
--- import Mathlib.Tactic
+import Mathlib.Tactic
 
 open QuotTerm
 
@@ -40,7 +40,8 @@ inductive VarTyped : QTerm → Nat → QTerm → QTerm → Prop where
 
 -- context → level → type → term → prop
 inductive Typed : QTerm → Nat → QTerm → QTerm → Prop where
-| lambda : ∀{ctx A B s lvl}, Typed ctx (Nat.succ lvl) S.U <{S.pi} {A} {B}>
+| lambda : ∀{ctx A B s lvl},
+  Typed ctx (Nat.succ lvl) S.U <{S.pi} {A} {B}>
   → Typed <{S.cons} {ctx} {const (.natConst lvl)} {A}> lvl B s
   → Typed ctx lvl <{S.pi} {A} {B}> <{S.lambda} {s}>
 | app : ∀{ctx A B s1 s2 lvl}, Typed ctx lvl <{S.pi} {A} {B}> s1 → Typed ctx lvl A s2
@@ -52,7 +53,7 @@ inductive Typed : QTerm → Nat → QTerm → QTerm → Prop where
 | lift : ∀{ctx lvl T t}, Typed ctx lvl T t → Typed ctx (1 + lvl) <{S.Lift} {T}> t
 | lower : ∀{ctx lvl T t}, Typed ctx (1 + lvl) <{S.Lift} {T}> t → Typed ctx lvl T t
 
-inductive In' (prev : QTerm → (QTerm → Prop) → Prop) : QTerm → (QTerm → Prop) → Prop :=
+inductive In' (prev : QTerm → (QTerm → Prop) → Prop) : QTerm → (QTerm → Prop) → Prop where
 | in_Pi : ∀ (s : QTerm → Prop) (F : QTerm → (QTerm → Prop)) A B,
   In' prev A s
   → (∀ a, s a → In' prev <{B} {a}> (F a))
@@ -74,11 +75,16 @@ inductive In_ctx : QTerm → QTerm → Prop where
   → s val
   → In_ctx <{S.pair} {env} {val}> <{S.cons} {ctx} {const (.natConst lvl)} {T}>
 
+-- why lean, why is this not in the standard library
+theorem forall_ext.{u} (A : Sort u) (B B' : A → Prop) (_ : ∀ a, B a = B' a)
+  : (∀ a, B a) = (∀ a, B' a) := by grind
+
 theorem In_function (lvl T S1 S2) (out1 : In lvl T S1) (out2 : In lvl T S2) : S1 = S2 := by
-  induction lvl generalizing T with
-  | zero => grind [In]
+  induction lvl generalizing T S1 S2 with
+  | zero =>
+    grind only [In]
   | succ lvl' ih =>
-    induction out1 with
+    induction out1 generalizing S2 with
     | in_Empty =>
       generalize h : <Empty> = x at out2
       cases out2 <;> lambda_solve
@@ -89,10 +95,64 @@ theorem In_function (lvl T S1 S2) (out1 : In lvl T S1) (out2 : In lvl T S2) : S1
       generalize h : <Lift {T}> = x at out2
       cases out2 <;> try lambda_solve
       apply ih <;> assumption
-    | in_Pi s F A B _ _ _ _ =>
+    | in_Pi s F A B x y ih_s ih_F =>
       generalize h : <Pi {A} {B}> = x at out2
-      cases out2 <;> lambda_solve
-      --
-      apply ih
+      generalize s2eq : S2 = S2' at out2
+      induction out2 with | in_Pi s' F' A' B' InA's' InB'aF' _ _ => _ | _ <;> lambda_solve
+      rw [<- ih_s s' InA's'] at *
+      apply funext; intros f
+      apply forall_ext; intros a
+      apply forall_ext; intros Sa
+      rw [ih_F a Sa (F' a) (InB'aF' a Sa)]
+
+theorem fundamental_lemma {ctx T lvl t env}
+  (mT : Typed ctx lvl T t)
+  (mctx : In_ctx env ctx)
+  : ∃ s, In (.succ lvl) <{T} {env}> s ∧ s <{t} {env}>
+  := by
+  cases mT with
+  | @lambda ctx A B s lvl tyAB body =>
+    have ⟨sAB, InSAB, SaAB⟩ := fundamental_lemma tyAB mctx
+    generalize why : <{S.U} {env}> = thing at InSAB
+    cases InSAB <;> try (lambda_solve <;> fail)
+    rcases SaAB with ⟨SAB, InABS⟩
+    rw [liftMultiZero] at InABS
+    generalize why2 : <{S.pi} {A} {B} {env}> = thing2 at InABS
+    cases InABS with | in_Pi SA SB A' B' InA InB => _ | _ <;> try (lambda_solve <;> fail)
+    exists (fun f ↦ ∀ a, SA a → SB a <{f} {a}>)
+    apply And.intro
+    · have res := @In'.in_Pi (In lvl) SA SB A' B' InA InB
+      lambda_solve
+      apply res
+    · --
+      simp
+      intros a SAa
+      replace InB := InB a SAa
+      have h : A' = A := by
+        clear * - why2
+        -- normalize
+        simp only [lift_app, lift_lam, lift_var,
+            subst_app, subst_lam, subst_var, subst_const,
+            liftMultiZero,
+            liftMulti_lam_rw,
+            beta,
+          --
+          Nat.succ_eq_add_one, zero_add, Nat.reduceAdd, Nat.not_ofNat_lt_one, ↓reduceIte,
+              Nat.reduceBEq, Bool.false_eq_true, lt_self_iff_false, BEq.rfl, ge_iff_le,
+              nonpos_iff_eq_zero, OfNat.ofNat_ne_zero, not_lt_zero', Nat.not_ofNat_le_one,
+              Nat.reduceLeDiff, Nat.reduceLT, zero_le, Nat.pred_eq_sub_one, Nat.add_one_sub_one] at *
+        --
+        lambda_solve
+        --
+      subst A'
+      -- lambda_solve
+      have res := fundamental_lemma body (.in_cons mctx InA SAa)
       --
       sorry
+  | app _ _ => sorry
+  | var _ => sorry
+  | Empty => sorry
+  | U => sorry
+  | Lift _ => sorry
+  | lift _ => sorry
+  | lower _ => sorry

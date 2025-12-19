@@ -85,23 +85,16 @@ noncomputable def means (lvl : Nat) (ty : QTerm) : Option (QTerm → Prop) :=
   | .zero => none -- some (fun _ ↦ False)
   | .succ lvl' => means' (means lvl') ty
 
--- noncomputable def means_ctx : QTerm → Option (QTerm → Prop) :=
---   runProg fun ctx ↦
---     Pmatch3
---     (fun ctx' lvl ty ↦ ctx = <{S.cons} {ctx'} {lvl} {ty}>)
---     (fun ctx' lvl ty ↦ .Rec PUnit (fun _ ↦ ctx')
---       (fun mctx' ↦ .Ret (some (_))))
---     -- nil case
---     (.Ret (some (fun q ↦ q = S.nil)))
-
-inductive means_ctx : QTerm → QTerm → Prop where
-| in_nil : means_ctx S.nil S.nil
-| in_cons : ∀ {env ctx lvl val T s},
-  means_ctx env ctx
-  → means (.succ lvl) <{T} {env}> = some s
-  → s val
-  → means_ctx <{S.pair} {env} {val}> <{S.cons} {ctx} {const (.natConst lvl)} {T}>
-
+noncomputable def means_ctx : QTerm → Option (QTerm → Prop) :=
+  runProg fun ctx ↦
+    Pmatch3
+    (fun ctx' lvl ty ↦ ctx = <{S.cons} {ctx'} {const (.natConst lvl)} {ty}>)
+    (fun ctx' lvl ty ↦ .Rec PUnit (fun _ ↦ ctx')
+      (fun mctx' ↦
+        .Ret (mybind (means lvl ty) fun mty ↦
+          some (fun env ↦ ∃ env' val, env = <{S.pair} {env'} {val}> ∧ mty val ∧ mctx' .unit env'))))
+    -- nil case
+    (.Ret (some (fun q ↦ q = S.nil)))
 
 -- set_option diagnostics true
 theorem fundamental_lemma {ctx T lvl t env}

@@ -257,6 +257,20 @@ theorem app_fact_rw {a b a' b'} (qneut : QNeutral a) (qneut' : QNeutral a')
     subst_vars
     rfl
 
+theorem liftZeroToLiftMulti {t} : QuotTerm.lift 0 t = liftMulti 1 t := by
+  apply Quotient.ind _ t
+  intros
+  simp [QuotTerm.liftMulti, QuotTerm.lift, SynTerm.liftMulti]
+
+theorem liftMultiLiftMulti {n m} {t : QTerm}
+  : liftMulti n (liftMulti m t) = liftMulti (n + m) t := by
+  apply Quotient.ind _ t
+  intros
+  simp [QuotTerm.liftMulti]
+  apply Quotient.sound
+  simp [SynTerm.liftMultiLiftMulti]
+  apply refl
+
 -- these are to replace liftMulti with lifts when it is around a lam, app, var, or const.
 theorem liftMulti_lam_rw {s t i}
   : liftMulti (Nat.succ i) (lam s t) = lift 0 (liftMulti i (lam s t)) := by
@@ -270,3 +284,41 @@ theorem liftMulti_var_rw {i j}
 theorem liftMulti_const_rw {c}
   : liftMulti (Nat.succ i) (const c) = lift 0 (liftMulti i (const c)) := by
   simp [QuotTerm.liftLiftMulti]
+
+
+-- describes terms that don't refer to the i'th variable
+inductive iFree : Nat → QTerm → Prop where
+| var : ∀ i j, i ≠ j → iFree i (var j)
+| lam : ∀ s t i, iFree i.succ t → iFree i (lam s t)
+| app : ∀ a b i, iFree i a → iFree i b → iFree i (app a b)
+| const : ∀ c i, iFree i (const c)
+
+theorem iFreeLift {t i} (ifree : iFree i t)
+  : ∃ t', t = QuotTerm.lift i t' := by
+  induction ifree with
+  | var i j _ =>
+    exists (var (if i < j then j - 1 else j ))
+    grind [lift_var]
+  | lam s t i _ ih =>
+    rcases ih with ⟨t', ih⟩
+    exists (lam s t')
+    grind [lift_lam]
+  | app a b i _ _ iha ihb =>
+    rcases iha with ⟨a', iha⟩
+    rcases ihb with ⟨b', ihb⟩
+    exists (app a' b')
+    grind [lift_app]
+  | const c i =>
+    exists const c
+    simp [lift_const]
+
+theorem eta_contract s t (H : iFree 0 t) : lam s (app t (var 0)) = subst 0 <Dummy> t := by
+  have ⟨t', eq⟩ := iFreeLift H
+  subst t
+  simp [eta]
+  apply Quotient.ind _ t'
+  intros t
+  simp [QuotTerm.subst, QuotTerm.lift, QuotTerm.const]
+  apply Quotient.sound
+  simp [subst_lift]
+  apply refl

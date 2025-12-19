@@ -105,6 +105,8 @@ theorem In_function (lvl T S1 S2) (out1 : In lvl T S1) (out2 : In lvl T S2) : S1
       apply forall_ext; intros Sa
       rw [ih_F a Sa (F' a) (InB'aF' a Sa)]
 
+-- macro "[" t:term:10 "]" : term => `(let t' := t (by (convert $t' 1)))
+
 theorem fundamental_lemma {ctx T lvl t env}
   (mT : Typed ctx lvl T t)
   (mctx : In_ctx env ctx)
@@ -124,29 +126,29 @@ theorem fundamental_lemma {ctx T lvl t env}
     · have res := @In'.in_Pi (In lvl) SA SB A' B' InA InB
       lambda_solve
       apply res
-    · --
-      simp
+    · simp
       intros a SAa
       replace InB := InB a SAa
-      have h : A' = A := by
-        clear * - why2
-        -- normalize
-        simp only [lift_app, lift_lam, lift_var,
-            subst_app, subst_lam, subst_var, subst_const,
-            liftMultiZero,
-            liftMulti_lam_rw,
-            beta,
-          --
-          Nat.succ_eq_add_one, zero_add, Nat.reduceAdd, Nat.not_ofNat_lt_one, ↓reduceIte,
-              Nat.reduceBEq, Bool.false_eq_true, lt_self_iff_false, BEq.rfl, ge_iff_le,
-              nonpos_iff_eq_zero, OfNat.ofNat_ne_zero, not_lt_zero', Nat.not_ofNat_le_one,
-              Nat.reduceLeDiff, Nat.reduceLT, zero_le, Nat.pred_eq_sub_one, Nat.add_one_sub_one] at *
-        --
-        lambda_solve
-        --
-      subst A'
-      -- lambda_solve
-      have res := fundamental_lemma body (.in_cons mctx InA SAa)
+      lambda_solve
+      -- have h : A' = <{A} {env}> := by lambda_solve
+      -- have h2 : B' = <λ a . {B} ({S.pair} {env} a)> := by lambda_solve
+      -- subst A' B'
+      -- it would be convenient to have a cast macro that proves equalities of types
+      -- with a given tactic
+      have h : (app A env) = <{A} {env}> := by lambda_solve
+      rw [h] at InA
+      -- have test1 := (In_ctx.in_cons mctx InA SAa)
+      -- have test := fundamental_lemma body _
+      have bla := fundamental_lemma body
+        (by convert (In_ctx.in_cons mctx InA SAa) <;> lambda_solve
+            lambda_solve
+            unfold S.cons
+            lambda_solve
+            -- i need eta!
+            sorry
+            )
+      normalize
+      lambda_solve
       --
       sorry
   | app _ _ => sorry

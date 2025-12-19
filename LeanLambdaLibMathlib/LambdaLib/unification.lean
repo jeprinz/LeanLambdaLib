@@ -14,17 +14,27 @@ zfree t1 → (t1 x = t2) = (t1 = λ x. t2)  rewrite rule.
 this will work with the repeat constructor dispatch.
 -/
 
+-- TODO: is there an idiomatic way to do the dispatches with typeclasses instead?
+
 macro "normalize" : tactic => `(tactic|
-  simp only [lift_app, lift_lam, lift_var, lift_const,
-      subst_app, subst_lam, subst_var, subst_const,
-      liftLiftMulti, substLiftMulti, liftMultiZero,
-      liftMulti_lam_rw, liftMulti_app_rw, liftMulti_var_rw, liftMulti_const_rw,
-      beta,
+  simp only [
+    lift_app, lift_lam, lift_var, lift_const,
+    subst_app, subst_lam, subst_var, subst_const,
+    liftLiftMulti, substLiftMulti, liftMultiZero,
+    liftMulti_lam_rw, liftMulti_app_rw, liftMulti_var_rw, liftMulti_const_rw,
+    liftMultiLiftMulti,
+    liftZeroToLiftMulti, -- is this good?
+    beta,
+    -- eta_contract,
     --
+    --
+    Nat.one_lt_ofNat,   zero_lt_one, tsub_self, one_ne_zero,
     Nat.succ_eq_add_one, zero_add, Nat.reduceAdd, Nat.not_ofNat_lt_one, ↓reduceIte,
-        Nat.reduceBEq, Bool.false_eq_true, lt_self_iff_false, BEq.rfl, ge_iff_le,
-        nonpos_iff_eq_zero, OfNat.ofNat_ne_zero, not_lt_zero', Nat.not_ofNat_le_one,
-        Nat.reduceLeDiff, Nat.reduceLT, zero_le, Nat.pred_eq_sub_one, Nat.add_one_sub_one] at *
+    Nat.reduceBEq, Bool.false_eq_true, lt_self_iff_false, BEq.rfl, ge_iff_le,
+    nonpos_iff_eq_zero, OfNat.ofNat_ne_zero, not_lt_zero', Nat.not_ofNat_le_one,
+    Nat.reduceLeDiff, Nat.reduceLT, zero_le, Nat.pred_eq_sub_one, Nat.add_one_sub_one
+  ] at *
+    -- | simp (disch := repeat constructor) only [eta_contract] at *
 )
 
 macro "lambda_solve" : tactic => `(tactic|
@@ -39,6 +49,7 @@ macro "lambda_solve" : tactic => `(tactic|
     | casesm* _ ∧ _
     | casesm* QTerm × QTerm
     | simp [*] -- TODO: maybe i can use the `contextual' flag instead
+    | simp (disch := (repeat' constructor) <;> grind only) only [eta_contract]
   )
 )
 
@@ -46,6 +57,7 @@ example (t1 t2 : QTerm)
   (H : < (λ x. x) {t1} > = <λ x. x>)
   : <{t1} {t2}> = t2 := by
   lambda_solve
+  --
 
 example (H : <λ x. A> = <λ x. B>) : False := by
   lambda_solve
@@ -55,6 +67,7 @@ example (H : <λ x. A> = <λ x. x>) : False := by
 
 example (t1 t2 : QTerm) (H : <A {t1} > = <A {t2} >) : t1 = t2 := by
   lambda_solve
+  --
 
 example (H : <A B> = <A C>) : False := by
   lambda_solve
@@ -144,6 +157,37 @@ example (t1 t2 t1' t2' : QTerm)
   (H1 : <A B C> = <A {t1} {t2} >)
   (H2 : <A B C> = <A {t1'} {t2'} >)
   : t1 = t1' := by
+  lambda_solve
+
+-- this turns any remaining lifts into liftMulti's, and also simplifies any substs
+-- that can then be simplified
+macro "fix_lifts" : tactic => `(tactic|
+  -- simp should go inside terms first, which would work correctly for multiple layers of lifts.
+  simp only [
+  ] at *
+)
+
+example (B C : QTerm) (H : <(λ x y z. A x y z) {B} D E> = <(λ x y z . A x y z) {C} D E>)
+  : B = C := by
+  lambda_solve
+
+example (I C : QTerm)
+  (H : <(λ x y z. A x y z) {I} D E> = <(λ x y z . A x y z) (λ x. x) D E>)
+  (H2 : <{I} C> = <Result>)
+  : C = <Result> := by
+  lambda_solve
+
+-- eta expansion
+example : <λ x . A x> = <A> := by
+  lambda_solve
+
+example : <λ x y . A x y> = <A> := by
+  lambda_solve
+
+example : <λ x y z . A x y z> = <A> := by
+  lambda_solve
+
+example : <λ x y z w . A x y z w> = <A> := by
   lambda_solve
 
 -- useful list of all mathlib tactics

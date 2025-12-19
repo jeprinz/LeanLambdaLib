@@ -937,4 +937,14 @@ theorem varStep {i t} (step : AllStep (var i) t) : t = var i := by
     apply ih
     rfl
 
+theorem liftMultiLiftMulti {n m} {t : Term}
+  : liftMulti n (liftMulti m t) = liftMulti (n + m) t := by
+  induction n with
+  | zero => simp [liftMulti]
+  | succ n ih =>
+    simp [liftMulti, ih]
+    have h : n + 1 + m = (n + m).succ := by grind
+    rw [h]
+    simp [liftMulti]
+
 end SynTerm

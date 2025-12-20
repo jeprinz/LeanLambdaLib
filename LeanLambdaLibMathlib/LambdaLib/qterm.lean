@@ -318,6 +318,7 @@ partial def elabTermImplS (e : Syntax) (varnames: List String) : MetaM (TSyntax 
     elabTermImplS ts varnames
   | `(< {$t:term} >) =>
     let n := Lean.quote (varnames.length)
+    if varnames.length == 0 then `($t) else
     `(liftMulti $n $t)
   | _ => throwError "other"
 
@@ -338,12 +339,12 @@ def test_term := <λ x. A x x>
 #check <λ x. λ y. x y>
 #check <A B>
 
-partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do
+partial def ppTermImpl (firstCall : Bool) (t : Expr) (varnames : List String) : Delab := do
   match t with
   | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) s) t =>
     let s' : Expr := s
     let (Expr.lit (Literal.strVal str)) := s' | failure
-    let `(< $s >) <- ppTermImpl t (str :: varnames) | failure
+    let `(< $s >) <- ppTermImpl false t (str :: varnames) | failure
     let name : Syntax := mkIdent <| Name.mkSimple str
     let tname : TSyntax _ := {raw := name}
     `(< λ $tname . $s>)
@@ -373,8 +374,8 @@ partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do
       let tname : TSyntax _ := {raw := name}
       `(< $tname >)
   | Expr.app (Expr.app (Expr.const `QuotTerm.app _) t1) t2 =>
-    let `(< $s1 >) <- ppTermImpl t1 varnames | failure
-    let `(< $s2 >) <- ppTermImpl t2 varnames | failure
+    let `(< $s1 >) <- ppTermImpl false t1 varnames | failure
+    let `(< $s2 >) <- ppTermImpl false t2 varnames | failure
     let parena := match t1 with
       | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) _) _ => true
       | _ => false
@@ -391,25 +392,30 @@ partial def ppTermImpl (t : Expr) (varnames : List String) : Delab := do
   | Expr.app (Expr.app (Expr.const `QuotTerm.liftMulti _) _n) t =>
     let ts <- delab t
     `(< { $ts } >)
-  | _ => failure
+  | other =>
+    -- this firstCall business is needed to stop lean from crashing in some wierd case
+    if firstCall then failure else
+    let ts <- delab other
+    `(< {$ts} >)
+  -- | _ => failure
 
 -- we can only trigger delaborators for top level things. so we need one for each constructor
 @[delab app.QuotTerm.app]
 def delabApp : Delab := do
   let e <- getExpr
-  ppTermImpl e []
+  ppTermImpl true e []
 @[delab app.QuotTerm.lam]
 def delabLam : Delab := do
   let e <- getExpr
-  ppTermImpl e []
+  ppTermImpl true e []
 @[delab app.QuotTerm.const]
 def delabConst : Delab := do
   let e <- getExpr
-  ppTermImpl e []
+  ppTermImpl true e []
 @[delab app.QuotTerm.var]
 def delabVar : Delab := do
   let e <- getExpr
-  ppTermImpl e []
+  ppTermImpl true e []
 
 #check OfNat.ofNat
 -- set_option pp.rawOnError true
@@ -423,6 +429,7 @@ def delabVar : Delab := do
 #check <λ x y . x y>
 #check <(A)(B)>
 #check <(A B)(B)>
+#check (app test_term <B>)
 -- def something := <λ x y. { _ }>
 
 end QuotTerm

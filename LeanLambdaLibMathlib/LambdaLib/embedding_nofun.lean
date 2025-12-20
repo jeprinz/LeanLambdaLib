@@ -14,7 +14,7 @@ abbrev proj2 := <λ p. p (λ x y. y)>
 
 -- contexts
 abbrev nil := <Nil>
-abbrev cons := <λ ctx lvl ty. Cons ctx lvl ty>
+abbrev cons := <Cons> -- takes ctx, lvl, and type
 
 -- variables
 abbrev zero := <λ env. {proj2} env>
@@ -107,6 +107,11 @@ theorem In_function {lvl T S1 S2} (out1 : In lvl T S1) (out2 : In lvl T S2) : S1
 
 -- macro "[" t:term:10 "]" : term => `(by (convert $t <;> grind))
 
+-- TODO: to make a lot of things better, i need to adjust the syntax so that when you
+-- write <{A}> there isn't a liftMulti in there, but also make it so that it inserts a {}
+-- when it can't figure out what to put around the argument so it can print things nicely
+-- still
+
 theorem fundamental_lemma {ctx T lvl t env}
   (mT : Typed ctx lvl T t)
   (mctx : In_ctx env ctx)
@@ -116,25 +121,18 @@ theorem fundamental_lemma {ctx T lvl t env}
   | @lambda ctx A B s lvl tyAB body =>
     have ⟨sAB, InSAB, SaAB⟩ := fundamental_lemma tyAB mctx
     generalize why : <{S.U} {env}> = thing at InSAB
-    cases InSAB <;> try (lambda_solve <;> fail)
+    cases InSAB <;> (try lambda_solve <;> fail) -- TODO: once i do the above todo, i can get rid of the try and fail parts here
     rcases SaAB with ⟨SAB, InABS⟩
-    rw [liftMultiZero] at InABS
     generalize why2 : <{S.pi} {A} {B} {env}> = thing2 at InABS
     cases InABS with | in_Pi SA SB A' B' InA InB => _ | _ <;> try (lambda_solve <;> fail)
     exists (fun f ↦ ∀ a, SA a → SB a <{f} {a}>)
     apply And.intro
-    · refine (cast ?_ (@In'.in_Pi (In lvl) SA SB A' B' InA InB))
-      simp only [In]
-      lambda_solve
+    · apply @In'.in_Pi (In lvl) SA SB A' B' InA InB
     · simp
       intros a SAa
       lambda_solve
-      have h : (app A env) = <{A} {env}> := by lambda_solve
-      rw [h] at InA
-      have test := fundamental_lemma body (In_ctx.in_cons mctx InA SAa)
-      have temp := fundamental_lemma body
-        (by convert (In_ctx.in_cons mctx InA SAa) <;> lambda_solve <;> try unfold S.cons <;> lambda_solve)
-      rcases temp with ⟨SBa, InSBa, thing⟩
+      have ih := fundamental_lemma body (In_ctx.in_cons mctx InA SAa)
+      rcases ih with ⟨SBa, InSBa, thing⟩
       normalize
       rw [<- In_function InSBa (InB a SAa)]
       assumption

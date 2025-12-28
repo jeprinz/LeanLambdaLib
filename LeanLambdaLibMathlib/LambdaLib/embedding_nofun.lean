@@ -34,9 +34,9 @@ end S
 
 inductive VarTyped : QTerm → Nat → QTerm → QTerm → Prop where
 | zero : ∀{ctx T lvl},
-  VarTyped <{S.cons} {ctx} {const (.natConst lvl)} {T}> lvl <{S.weaken} {T}> zero
+  VarTyped <{S.cons} {ctx} {const (.natConst lvl)} {T}> lvl <{S.weaken} {T}> S.zero
 | succ : ∀{ctx A T s lvl1 lvl2}, VarTyped ctx lvl1 A s
-  → VarTyped <{S.cons} {ctx} {lvl2} {T}> lvl1 <{S.weaken} {A}> <{succ} {s}>
+  → VarTyped <{S.cons} {ctx} {lvl2} {T}> lvl1 <{S.weaken} {A}> <{S.succ} {s}>
 
 -- context → level → type → term → prop
 inductive Typed : QTerm → Nat → QTerm → QTerm → Prop where
@@ -48,7 +48,7 @@ inductive Typed : QTerm → Nat → QTerm → QTerm → Prop where
   → Typed ctx lvl <{S.subLast} {B} {s2}> <{S.app} {s1} {s2}>
 | var : ∀{ctx T t lvl}, VarTyped ctx lvl T t → Typed ctx lvl T t
 | Empty : ∀{ctx}, Typed ctx 1 S.U S.Empty
-| U : ∀{ctx lvl}, Typed ctx (2 + lvl) S.U S.U
+| U : ∀{ctx} {lvl : Nat}, Typed ctx lvl.succ.succ S.U S.U
 | Pi : ∀{ctx lvl A B}, Typed ctx lvl.succ S.U A
   → Typed <{S.cons} {ctx} {const (.natConst lvl)} {A}> lvl.succ S.U B
   → Typed ctx lvl.succ S.U <{S.pi} {A} {B}>
@@ -141,7 +141,11 @@ theorem fundamental_lemma {ctx T lvl t env}
   --   have InB := InB _ S2s2
   --   lambda_solve
   --   apply InB
-  | Typed.var _ => by sorry
+  | Typed.var x => by
+    clear mT
+    induction x generalizing env
+      <;> generalize H : (< {S.cons} {_} {_} {_} >) = ctx2 at mctx
+      <;> cases mctx <;> lambda_solve <;> grind
   -- | Typed.Empty => by
   --   exists (fun T ↦ ∃ S, In 1 T S)
   --   apply And.intro
@@ -152,36 +156,42 @@ theorem fundamental_lemma {ctx T lvl t env}
   --     exists (fun _ ↦ False)
   --     lambda_solve
   --     apply In'.in_Empty
-  | Typed.U => by sorry
-  | @Typed.Pi ctx lvl A B a b => by
-    have ⟨SA, InSA, SaA⟩ := fundamental_lemma a mctx
-    generalize why1 : <{S.U} {env}> = x at InSA
-    cases InSA <;> try (lambda_solve <;> fail)
-    rcases SaA with ⟨SA, InSA⟩
-    exists (fun T ↦ ∃ S, In lvl.succ T S)
-    apply And.intro
-    · apply In'.in_Type
-    · simp [In] at *
-      let F := fun a b ↦ ∃ SB, In lvl.succ <{B} ({S.pair} {env} {a})> SB ∧ SB b
-      exists (fun f ↦ ∀ a, SA a → F a <{f} {a}>)
-      normalize
-      apply In'.in_Pi SA F _ _ InSA
-      intros a SAa
-      rcases fundamental_lemma b (In_ctx.in_cons mctx InSA SAa) with ⟨SBa, InSBa, SBaBa⟩
-      generalize why : <{S.U} ({S.pair} {env} {a})> = thing at InSBa
-      cases InSBa <;> lambda_solve
-      rcases SBaBa with ⟨S, SBaBa⟩
-      simp [In] at SBaBa
-      suffices F a = S by subst S; assumption
-      unfold F
-      ext t
-      normalize
-      apply Iff.intro
-      · rintro ⟨SB, InSB, SBt⟩
-        rw [<- In_function InSB SBaBa]
-        assumption
-      · intros St
-        exists S
+  -- | @Typed.U ctx lvl => by
+  --   exists (fun T ↦ ∃ S, In lvl.succ.succ T S)
+  --   normalize
+  --   apply And.intro
+  --   · apply In'.in_Type
+  --   · exists (fun T ↦ ∃ S, In lvl.succ T S)
+  --     apply In'.in_Type
+  -- | @Typed.Pi ctx lvl A B a b => by
+  --   have ⟨SA, InSA, SaA⟩ := fundamental_lemma a mctx
+  --   generalize why1 : <{S.U} {env}> = x at InSA
+  --   cases InSA <;> try (lambda_solve <;> fail)
+  --   rcases SaA with ⟨SA, InSA⟩
+  --   exists (fun T ↦ ∃ S, In lvl.succ T S)
+  --   apply And.intro
+  --   · apply In'.in_Type
+  --   · simp [In] at *
+  --     let F := fun a b ↦ ∃ SB, In lvl.succ <{B} ({S.pair} {env} {a})> SB ∧ SB b
+  --     exists (fun f ↦ ∀ a, SA a → F a <{f} {a}>)
+  --     normalize
+  --     apply In'.in_Pi SA F _ _ InSA
+  --     intros a SAa
+  --     rcases fundamental_lemma b (In_ctx.in_cons mctx InSA SAa) with ⟨SBa, InSBa, SBaBa⟩
+  --     generalize why : <{S.U} ({S.pair} {env} {a})> = thing at InSBa
+  --     cases InSBa <;> lambda_solve
+  --     rcases SBaBa with ⟨S, SBaBa⟩
+  --     simp [In] at SBaBa
+  --     suffices F a = S by subst S; assumption
+  --     unfold F
+  --     ext t
+  --     normalize
+  --     apply Iff.intro
+  --     · rintro ⟨SB, InSB, SBt⟩
+  --       rw [<- In_function InSB SBaBa]
+  --       assumption
+  --     · intros St
+  --       exists S
   | Typed.Lift _ => by sorry
   | Typed.lift _ => by sorry
   | Typed.lower _ => by sorry

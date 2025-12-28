@@ -53,6 +53,7 @@ macro "lambda_solve" : tactic => `(tactic|
   )
 )
 
+/-
 example (t1 t2 : QTerm)
   (H : < (λ x. x) {t1} > = <λ x. x>)
   : <{t1} {t2}> = t2 := by
@@ -200,3 +201,5 @@ example : <λ x y z w . A x y z w> = <A> := by
 --   --
 
 -- https://github.com/tristan-f-r/mathlib4-tactics
+
+-/

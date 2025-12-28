@@ -23,7 +23,7 @@ abbrev succ := <λ x env. x ({proj1} env)>
 abbrev pi := <λ x y env. Pi (x env) (λ a. y ({pair} env a))>
 abbrev U := <λ env. U>
 abbrev Empty := <λ env. Empty>
-abbrev Lift := <λ T env. Lift (T env)>
+abbrev Lift := <λ t env. Lift (t env)>
 
 abbrev lambda := <λ t env a. t ({pair} env a)>
 abbrev app := <λ t1 t2 env. (t1 env) (t2 env)>
@@ -52,9 +52,9 @@ inductive Typed : QTerm → Nat → QTerm → QTerm → Prop where
 | Pi : ∀{ctx lvl A B}, Typed ctx lvl.succ S.U A
   → Typed <{S.cons} {ctx} {const (.natConst lvl)} {A}> lvl.succ S.U B
   → Typed ctx lvl.succ S.U <{S.pi} {A} {B}>
-| Lift : ∀{ctx lvl T}, Typed ctx (1 + lvl) S.U T → Typed ctx (2 + lvl) S.U <{S.Lift} {T}>
-| lift : ∀{ctx lvl T t}, Typed ctx lvl T t → Typed ctx (1 + lvl) <{S.Lift} {T}> t
-| lower : ∀{ctx lvl T t}, Typed ctx (1 + lvl) <{S.Lift} {T}> t → Typed ctx lvl T t
+| Lift : ∀{ctx T} {lvl : Nat}, Typed ctx lvl.succ S.U T → Typed ctx lvl.succ.succ S.U <{S.Lift} {T}>
+| lift : ∀{ctx lvl T t}, Typed ctx lvl T t → Typed ctx lvl.succ <{S.Lift} {T}> t
+| lower : ∀{ctx lvl T t}, Typed ctx lvl.succ <{S.Lift} {T}> t → Typed ctx lvl T t
 
 inductive In' (prev : QTerm → (QTerm → Prop) → Prop) : QTerm → (QTerm → Prop) → Prop where
 | in_Pi : ∀ (s : QTerm → Prop) (F : QTerm → (QTerm → Prop)) A B,
@@ -114,87 +114,105 @@ theorem fundamental_lemma {ctx T lvl t env}
   : ∃ s, In (.succ lvl) <{T} {env}> s ∧ s <{t} {env}>
   :=
   match mT with
-  -- | @Typed.lambda ctx A B s lvl tyAB body => by
-  --   have ⟨sAB, InSAB, SaAB⟩ := fundamental_lemma tyAB mctx
-  --   generalize why : <{S.U} {env}> = thing at InSAB
-  --   cases InSAB <;> (try lambda_solve <;> fail)
-  --   rcases SaAB with ⟨SAB, InABS⟩
-  --   generalize why2 : <{S.pi} {A} {B} {env}> = thing2 at InABS
-  --   cases InABS with | in_Pi SA SB A' B' InA InB => _ | _ <;> try (lambda_solve <;> fail)
-  --   exists (fun f ↦ ∀ a, SA a → SB a <{f} {a}>)
-  --   apply And.intro
-  --   · apply @In'.in_Pi (In lvl) SA SB A' B' InA InB
-  --   · simp
-  --     intros a SAa
-  --     lambda_solve
-  --     rcases fundamental_lemma body (In_ctx.in_cons mctx InA SAa) with ⟨SBa, InSBa, thing⟩
-  --     normalize
-  --     rw [<- In_function InSBa (InB a SAa)]
-  --     assumption
-  -- | @Typed.app ctx A B s1 s2 lvl t1 t2 => by
-  --   rcases (fundamental_lemma t1 mctx) with ⟨S1, In1, S1s1⟩
-  --   rcases (fundamental_lemma t2 mctx) with ⟨S2, In2, S2s2⟩
-  --   generalize why2 : <{S.pi} {A} {B} {env}> = thing2 at In1
-  --   cases In1 with | in_Pi SA SB A' B' InA InB => _ | _ <;> lambda_solve
-  --   rw [In_function In2 InA] at *
-  --   exists (SB <{s2} {env}>)
-  --   have InB := InB _ S2s2
-  --   lambda_solve
-  --   apply InB
+  | @Typed.lambda ctx A B s lvl tyAB body => by
+    have ⟨sAB, InSAB, SaAB⟩ := fundamental_lemma tyAB mctx
+    generalize why : <{S.U} {env}> = thing at InSAB
+    cases InSAB <;> (try lambda_solve <;> fail)
+    rcases SaAB with ⟨SAB, InABS⟩
+    generalize why2 : <{S.pi} {A} {B} {env}> = thing2 at InABS
+    cases InABS with | in_Pi SA SB A' B' InA InB => _ | _ <;> try (lambda_solve <;> fail)
+    exists (fun f ↦ ∀ a, SA a → SB a <{f} {a}>)
+    apply And.intro
+    · apply @In'.in_Pi (In lvl) SA SB A' B' InA InB
+    · simp
+      intros a SAa
+      lambda_solve
+      rcases fundamental_lemma body (In_ctx.in_cons mctx InA SAa) with ⟨SBa, InSBa, thing⟩
+      normalize
+      rw [<- In_function InSBa (InB a SAa)]
+      assumption
+  | @Typed.app ctx A B s1 s2 lvl t1 t2 => by
+    rcases (fundamental_lemma t1 mctx) with ⟨S1, In1, S1s1⟩
+    rcases (fundamental_lemma t2 mctx) with ⟨S2, In2, S2s2⟩
+    generalize why2 : <{S.pi} {A} {B} {env}> = thing2 at In1
+    cases In1 with | in_Pi SA SB A' B' InA InB => _ | _ <;> lambda_solve
+    rw [In_function In2 InA] at *
+    exists (SB <{s2} {env}>)
+    have InB := InB _ S2s2
+    lambda_solve
+    apply InB
   | Typed.var x => by
     clear mT
     induction x generalizing env
       <;> generalize H : (< {S.cons} {_} {_} {_} >) = ctx2 at mctx
       <;> cases mctx <;> lambda_solve <;> grind
-  -- | Typed.Empty => by
-  --   exists (fun T ↦ ∃ S, In 1 T S)
-  --   apply And.intro
-  --   · simp [In]
-  --     lambda_solve
-  --     apply In'.in_Type
-  --   · simp [In]
-  --     exists (fun _ ↦ False)
-  --     lambda_solve
-  --     apply In'.in_Empty
-  -- | @Typed.U ctx lvl => by
-  --   exists (fun T ↦ ∃ S, In lvl.succ.succ T S)
-  --   normalize
-  --   apply And.intro
-  --   · apply In'.in_Type
-  --   · exists (fun T ↦ ∃ S, In lvl.succ T S)
-  --     apply In'.in_Type
-  -- | @Typed.Pi ctx lvl A B a b => by
-  --   have ⟨SA, InSA, SaA⟩ := fundamental_lemma a mctx
-  --   generalize why1 : <{S.U} {env}> = x at InSA
-  --   cases InSA <;> try (lambda_solve <;> fail)
-  --   rcases SaA with ⟨SA, InSA⟩
-  --   exists (fun T ↦ ∃ S, In lvl.succ T S)
-  --   apply And.intro
-  --   · apply In'.in_Type
-  --   · simp [In] at *
-  --     let F := fun a b ↦ ∃ SB, In lvl.succ <{B} ({S.pair} {env} {a})> SB ∧ SB b
-  --     exists (fun f ↦ ∀ a, SA a → F a <{f} {a}>)
-  --     normalize
-  --     apply In'.in_Pi SA F _ _ InSA
-  --     intros a SAa
-  --     rcases fundamental_lemma b (In_ctx.in_cons mctx InSA SAa) with ⟨SBa, InSBa, SBaBa⟩
-  --     generalize why : <{S.U} ({S.pair} {env} {a})> = thing at InSBa
-  --     cases InSBa <;> lambda_solve
-  --     rcases SBaBa with ⟨S, SBaBa⟩
-  --     simp [In] at SBaBa
-  --     suffices F a = S by subst S; assumption
-  --     unfold F
-  --     ext t
-  --     normalize
-  --     apply Iff.intro
-  --     · rintro ⟨SB, InSB, SBt⟩
-  --       rw [<- In_function InSB SBaBa]
-  --       assumption
-  --     · intros St
-  --       exists S
-  | Typed.Lift _ => by sorry
-  | Typed.lift _ => by sorry
-  | Typed.lower _ => by sorry
-  | _ => by sorry
+  | Typed.Empty => by
+    exists (fun T ↦ ∃ S, In 1 T S)
+    apply And.intro
+    · simp [In]
+      lambda_solve
+      apply In'.in_Type
+    · simp [In]
+      exists (fun _ ↦ False)
+      lambda_solve
+      apply In'.in_Empty
+  | @Typed.U ctx lvl => by
+    exists (fun T ↦ ∃ S, In lvl.succ.succ T S)
+    normalize
+    apply And.intro
+    · apply In'.in_Type
+    · exists (fun T ↦ ∃ S, In lvl.succ T S)
+      apply In'.in_Type
+  | @Typed.Pi ctx lvl A B a b => by
+    have ⟨SA, InSA, SaA⟩ := fundamental_lemma a mctx
+    generalize why1 : <{S.U} {env}> = x at InSA
+    cases InSA <;> try (lambda_solve <;> fail)
+    rcases SaA with ⟨SA, InSA⟩
+    exists (fun T ↦ ∃ S, In lvl.succ T S)
+    apply And.intro
+    · apply In'.in_Type
+    · simp [In] at *
+      let F := fun a b ↦ ∃ SB, In lvl.succ <{B} ({S.pair} {env} {a})> SB ∧ SB b
+      exists (fun f ↦ ∀ a, SA a → F a <{f} {a}>)
+      normalize
+      apply In'.in_Pi SA F _ _ InSA
+      intros a SAa
+      rcases fundamental_lemma b (In_ctx.in_cons mctx InSA SAa) with ⟨SBa, InSBa, SBaBa⟩
+      generalize why : <{S.U} ({S.pair} {env} {a})> = thing at InSBa
+      cases InSBa <;> lambda_solve
+      rcases SBaBa with ⟨S, SBaBa⟩
+      simp [In] at SBaBa
+      suffices F a = S by subst S; assumption
+      unfold F
+      ext t
+      normalize
+      apply Iff.intro
+      · rintro ⟨SB, InSB, SBt⟩
+        rw [<- In_function InSB SBaBa]
+        assumption
+      · intros St
+        exists S
+  | @Typed.Lift ctx T lvl Tty => by
+    have ⟨s, InS, ST⟩ := fundamental_lemma Tty mctx
+    generalize h : <{S.U} {env}> = x at InS
+    cases InS <;> (try lambda_solve <;> fail)
+    exists (fun T ↦ ∃ S, In lvl.succ.succ T S)
+    simp [In]
+    apply And.intro
+    · apply In'.in_Type
+    · have ⟨s, Ins⟩ := ST
+      exists s
+      normalize
+      apply (In'.in_Lift _ _ Ins)
+  | Typed.lift t => by
+    have ⟨s, Ins, sT⟩ := fundamental_lemma t mctx
+    exists s
+    normalize
+    apply (And.intro (In'.in_Lift _ _ Ins) sT)
+  | Typed.lower t => by
+    have ⟨s, Ins, sT⟩ := fundamental_lemma t mctx
+    generalize h : <{S.Lift} {T} {env}> = x at Ins
+    cases Ins <;> lambda_solve
+    exists s
 
 -- can i use the lambda functions to encode the logical predicate?

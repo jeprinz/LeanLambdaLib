@@ -148,13 +148,12 @@ theorem fundamental_lemma {ctx T lvl t env}
       <;> cases mctx <;> lambda_solve <;> grind
   | Typed.Empty => by
     exists (fun T ↦ ∃ S, In 1 T S)
+    lambda_solve
     apply And.intro
     · simp [In]
-      lambda_solve
       apply In'.in_Type
     · simp [In]
       exists (fun _ ↦ False)
-      lambda_solve
       apply In'.in_Empty
   | @Typed.U ctx lvl => by
     exists (fun T ↦ ∃ S, In lvl.succ.succ T S)

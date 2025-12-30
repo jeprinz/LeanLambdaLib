@@ -191,6 +191,9 @@ example : <λ x y z . A x y z> = <A> := by
 example : <λ x y z w . A x y z w> = <A> := by
   lambda_solve
 
+example (t : QTerm) : <λ x . {t} x> = t := by
+  lambda_solve
+
 -- useful list of all mathlib tactics
 -- https://github.com/haruhisa-enomoto/mathlib4-all-tactics/blob/main/all-tactics.md
 

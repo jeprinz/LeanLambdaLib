@@ -292,6 +292,7 @@ inductive iFree : Nat → QTerm → Prop where
 | lam : ∀ s t i, iFree i.succ t → iFree i (lam s t)
 | app : ∀ a b i, iFree i a → iFree i b → iFree i (app a b)
 | const : ∀ c i, iFree i (const c)
+| liftMulti : ∀ i j t, j > i → iFree i (liftMulti j t)
 
 theorem iFreeLift {t i} (ifree : iFree i t)
   : ∃ t', t = QuotTerm.lift i t' := by
@@ -311,6 +312,13 @@ theorem iFreeLift {t i} (ifree : iFree i t)
   | const c i =>
     exists const c
     simp [lift_const]
+  | liftMulti i j t =>
+    have ⟨a, p⟩ : ∃ a, (i + a).succ = j := by
+      exists (j - i - 1)
+      grind
+    exists (liftMulti i (liftMulti a t))
+    rw [_root_.liftMultiLiftMulti]
+    rw [QuotTerm.liftLiftMulti] <;> grind
 
 theorem eta_contract s t (H : iFree 0 t) : lam s (app t (var 0)) = subst 0 <Dummy> t := by
   have ⟨t', eq⟩ := iFreeLift H

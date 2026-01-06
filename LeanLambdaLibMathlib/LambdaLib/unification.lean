@@ -1,5 +1,3 @@
--- import Mathlib.Tactic.failIfNoProgress -- why is this not in lean's standard library?
-
 import LambdaLib.qterm
 import LambdaLib.unificationFacts
 import Mathlib.Tactic

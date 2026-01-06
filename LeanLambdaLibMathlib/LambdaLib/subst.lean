@@ -1,5 +1,6 @@
 import LambdaLib.qterm
 import LambdaLib.unification
+import Mathlib.Tactic
 
 open QuotTerm
 
@@ -71,3 +72,109 @@ macro "λcast" t:term:10 : term => `(cast (by lambda_solve) $t)
 def idRen {ctx : QTerm} : Ren S.idSub ctx ctx :=
     -- fun x ↦ by lambda_solve; exact x
     fun x ↦ λcast x
+
+/-
+i'm going to need a macro/elaborator which:
+given x of some inductive type, automatically generalizes all of the indices
+then, you can do a match with match cases.
+some thing like
+gmatch x with
+|... the cases
+
+can i somehow get it to then turn into a normal match?
+
+
+one stupid way to solve this problem is to rewrite Var and Typed so that
+the output just has variables, and there are extra preises with equalities
+-/
+
+-- syntax:1500 (name := caster) "<" lambda_scope:10 ">" : term
+
+def cast2.{u} {α β : Sort u} (a : α) (h : α = β) : β := cast h a
+
+def castVar {ctx1 ctx2 lvl1 lvl2 ty1 ty2 tm1 tm2}
+  (prog : Var ctx1 lvl1 ty1 tm1)
+  (h1 : ctx1 = ctx2)
+  (h2 : lvl1 = lvl2)
+  (h3 : ty1 = ty2)
+  (h4 : tm1 = tm2)
+  : Var ctx2 lvl2 ty2 tm2 := by
+  subst_vars
+  exact prog
+
+/-
+the issue is that in the rocq version in metaprogramming/substitution.v,
+after refining with castVar, the three arguments to Var.zero are left as evars.
+in rocq, evars can exist across goals, and solving for them in one goal will
+solve for them in other goals.
+
+in lean, i'm not sure if evars like this exist.
+if they don't, then i don't really see how this sort of pattern matching could be
+possible at all.
+
+see https://github.com/haruhisa-enomoto/mathlib4-all-tactics/blob/main/all-tactics.md
+the matchlib tactic eapply.
+so something must be possible here.
+-/
+
+def liftRen {ctx1 ctx2 lvl T sub} (ren : Ren sub ctx1 ctx2)
+    : Ren <{S.liftSub} {sub}> <{S.cons} {ctx1} {lvl} {T}> <{S.cons} {ctx2} {lvl} ({S.subTerm} {sub} {T})>
+    := fun x ↦ by
+    generalize h : <{S.cons} {ctx1} {lvl} {T}> = ctx at x
+    -- exact match bla : x with
+    exact match x with
+    -- match (generalizing := false) bla : x with
+    | Var.zero => by
+        -- the question is, how can i leave the inputs of Var.zero to be metavariables that
+        -- can be solved in later goals?
+        -- refine (castVar (@Var.zero ?a ?b ?c) ?d ?e ?f ?g)
+        eapply (castVar Var.zero)
+        · --
+          --
+          sorry
+        · --
+          -- lambda_solve
+          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
+          repeat ( first
+            -- | simp at * -- TODO: figure out which lemmas this is using (relating to ∧) and write explicitly
+            | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
+            | casesm* _ ∧ _
+            | casesm* QTerm × QTerm
+            | normalize
+            | simp only [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2,
+              SynTerm.Constant.strConst.injEq, String.reduceEq] at *
+            | simp [*] -- TODO: maybe i can use the `contextual' flag instead
+            | simp (disch := (repeat' constructor) <;> grind only) only [eta_contract]
+            | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
+              app_ne_const_rw2, app_ne_var_rw2] at *
+          )
+          --
+          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
+          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
+          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
+          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
+          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
+          --
+          sorry
+        · --
+          --
+          sorry
+        · --
+          --
+          sorry
+        · --
+          --
+          sorry
+        · --
+          --
+          sorry
+        · --
+          --
+          sorry
+        --
+        -- convert Var.zero <;> lambda_solve
+        -- refine (cast ?_ Var.zero)
+        -- exact (cast2 (by lambda_solve) Var.zero)
+        --
+        -- sorry
+    | Var.succ x' => _

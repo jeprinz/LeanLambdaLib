@@ -38,20 +38,19 @@ macro "normalize" : tactic => `(tactic|
 macro "lambda_solve" : tactic => `(tactic|
   repeat ( first
     -- | simp at * -- TODO: figure out which lemmas this is using (relating to ∧) and write explicitly
-    | normalize
-    | simp only [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2,
-      SynTerm.Constant.strConst.injEq, String.reduceEq] at *
-    | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
-      app_ne_const_rw2, app_ne_var_rw2] at *
     | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
     | casesm* _ ∧ _
     | casesm* QTerm × QTerm
     | simp [*] -- TODO: maybe i can use the `contextual' flag instead
     | simp (disch := (repeat' constructor) <;> grind only) only [eta_contract]
+    | normalize
+    | simp only [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2,
+      SynTerm.Constant.strConst.injEq, String.reduceEq] at *
+    | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
+      app_ne_const_rw2, app_ne_var_rw2] at *
   )
 )
 
-/-
 example (t1 t2 : QTerm)
   (H : < (λ x. x) {t1} > = <λ x. x>)
   : <{t1} {t2}> = t2 := by
@@ -192,6 +191,19 @@ example : <λ x y z w . A x y z w> = <A> := by
 example (t : QTerm) : <λ x . {t} x> = t := by
   lambda_solve
 
+inductive IndexedType : QTerm → Type where
+inductive IndexedProp : QTerm → Prop where
+
+example
+  (H1 : IndexedType <(λ x . x) A>)
+  (H2 : IndexedProp <(λ x . x) A>)
+   : IndexedType <A> × Inhabited (IndexedProp <A>):= by
+  lambda_solve
+  sorry
+  -- simp only [beta] at *
+  -- for some crazy reason, this doesn't work when its a Type.
+  --
+
 -- useful list of all mathlib tactics
 -- https://github.com/haruhisa-enomoto/mathlib4-all-tactics/blob/main/all-tactics.md
 
@@ -202,5 +214,3 @@ example (t : QTerm) : <λ x . {t} x> = t := by
 --   --
 
 -- https://github.com/tristan-f-r/mathlib4-tactics
-
--/

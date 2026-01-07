@@ -49,8 +49,8 @@ inductive Var : QTerm → Nat → QTerm → QTerm → Type where
 -- context → level → type → term → prop
 inductive Typed : QTerm → Nat → QTerm → QTerm → Type where
 | lambda : ∀{ctx A B s lvl},
-  Typed ctx (Nat.succ lvl) S.U <{S.pi} {A} {B}>
-  → Typed <{S.cons} {ctx} {const (.natConst lvl)} {A}> lvl B s
+  -- Typed ctx (Nat.succ lvl) S.U <{S.pi} {A} {B}>
+  Typed <{S.cons} {ctx} {const (.natConst lvl)} {A}> lvl B s
   → Typed ctx lvl <{S.pi} {A} {B}> <{S.lambda} {s}>
 | app : ∀{ctx A B s1 s2 lvl}, Typed ctx lvl <{S.pi} {A} {B}> s1 → Typed ctx lvl A s2
   → Typed ctx lvl <{S.subLast} {B} {s2}> <{S.app} {s1} {s2}>
@@ -102,6 +102,16 @@ def castVar {ctx1 ctx2 lvl1 lvl2 ty1 ty2 tm1 tm2}
   subst_vars
   exact prog
 
+def castTyped {ctx1 ctx2 lvl1 lvl2 ty1 ty2 tm1 tm2}
+  (prog : Typed ctx1 lvl1 ty1 tm1)
+  (h1 : ctx1 = ctx2)
+  (h2 : lvl1 = lvl2)
+  (h3 : ty1 = ty2)
+  (h4 : tm1 = tm2)
+  : Typed ctx2 lvl2 ty2 tm2 := by
+  subst_vars
+  exact prog
+
 /-
 the issue is that in the rocq version in metaprogramming/substitution.v,
 after refining with castVar, the three arguments to Var.zero are left as evars.
@@ -128,53 +138,58 @@ def liftRen {ctx1 ctx2 lvl T sub} (ren : Ren sub ctx1 ctx2)
         -- the question is, how can i leave the inputs of Var.zero to be metavariables that
         -- can be solved in later goals?
         -- refine (castVar (@Var.zero ?a ?b ?c) ?d ?e ?f ?g)
-        eapply (castVar Var.zero)
-        · --
-          --
-          sorry
-        · --
-          -- lambda_solve
-          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
-          repeat ( first
-            -- | simp at * -- TODO: figure out which lemmas this is using (relating to ∧) and write explicitly
-            | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
-            | casesm* _ ∧ _
-            | casesm* QTerm × QTerm
-            | normalize
-            | simp only [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2,
-              SynTerm.Constant.strConst.injEq, String.reduceEq] at *
-            | simp [*] -- TODO: maybe i can use the `contextual' flag instead
-            | simp (disch := (repeat' constructor) <;> grind only) only [eta_contract]
-            | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
-              app_ne_const_rw2, app_ne_var_rw2] at *
-          )
-          --
-          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
-          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
-          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
-          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
-          simp (disch := repeat constructor) only [ app_fact_rw, ] at *
-          --
-          sorry
-        · --
-          --
-          sorry
-        · --
-          --
-          sorry
-        · --
-          --
-          sorry
-        · --
-          --
-          sorry
-        · --
-          --
-          sorry
+        eapply (castVar Var.zero) <;> (lambda_solve <;> rfl)
         --
-        -- convert Var.zero <;> lambda_solve
-        -- refine (cast ?_ Var.zero)
-        -- exact (cast2 (by lambda_solve) Var.zero)
-        --
-        -- sorry
-    | Var.succ x' => _
+    | Var.succ x' => by
+      eapply (castVar (Var.succ (ren (castVar x' ?_ ?_ ?_ ?_))))
+        <;> (lambda_solve <;> rfl)
+
+def weaken1Ren {ctx lvl T} : Ren S.weaken1Ren ctx <{S.cons} {ctx} {lvl} {T}> :=
+  fun x ↦ by
+  eapply (castVar (Var.succ x)) <;> (lambda_solve <;> rfl)
+
+axiom hole.{u} {T : Sort u} : T
+
+macro "castVarM" t:term:10 : term => `(by eapply (castVar $t) <;> (lambda_solve <;> rfl))
+macro "castTypedM" t:term:10 : term => `(by eapply (castTyped $t) <;> (lambda_solve <;> rfl))
+
+def renTerm {ctx1 ctx2 sub lvl T t} (ren : Ren sub ctx1 ctx2)
+  (prog : Typed ctx1 lvl T t) : Typed ctx2 lvl <{S.subTerm} {sub} {T}> <{S.subTerm} {sub} {t}> :=
+  match prog with
+  | .lambda t => castTypedM (Typed.lambda (renTerm (liftRen ren) t))
+  | .app t1 t2 =>
+    -- castTypedM (.app (castTypedM (renTerm ren t1)) (renTerm ren t2))
+    by
+      -- have app := Typed.app
+      have lhs := (renTerm ren t1)
+      unfold S.subTerm at lhs
+      --
+      clear * - lhs
+      have test : Typed <A> 1 <A> <(λ x . x) B> := by sorry
+      --
+      lambda_solve
+      --
+      simp only [beta] at *
+      -- why is the beta reduction in lhs not happening?
+      --
+      sorry
+  | .var x => castTypedM (Typed.var (ren (castVarM x)))
+  | .Empty => castTypedM .Empty
+  | .U => castTypedM .U
+  | .Pi _ _ => _
+  | .Lift _ => _
+  | .lift _ => _
+  | .lower _ => _
+  -- by
+  -- eapply
+  --   (match prog with
+  --     | .lambda _ => hole
+  --     | .app _ _ => hole
+  --     | .var x => Typed.var (ren (castVar x ?_ ?_ ?_ ?_))
+  --     | .Empty => (castTyped .Empty ?_ ?_ ?_ ?_)
+  --     | .U => (castTyped .U ?_ ?_ ?_ ?_)
+  --     | .Pi _ _ => hole
+  --     | .Lift _ => hole
+  --     | .lift _ => hole
+  --     | .lower _ => hole
+  --   ) <;> (lambda_solve <;> rfl)

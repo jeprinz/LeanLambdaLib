@@ -24,20 +24,12 @@ abbrev succ := <λ x env. x ({proj1} env)>
 
 abbrev pi := <λ x y env. Pi (x env) (λ a. y ({pair} env a))>
 abbrev U := <λ env. U>
-abbrev Empty := <λ env. Empty>
-abbrev Lift := <λ t env. Lift (t env)>
 
 abbrev lambda := <λ t env a. t ({pair} env a)>
 abbrev app := <λ t1 t2 env. (t1 env) (t2 env)>
 
 abbrev weaken := <λ t env. t ({proj1} env)>
 abbrev subLast := <λ t toSub env. t ({pair} env (toSub env))>
-
-abbrev idSub := <λ env. env>
-abbrev weaken1Ren := <λ env. {proj1} env>
-abbrev liftSub := <λ sub env. {pair} (sub ({proj1} env)) ({proj2} env)>
-abbrev extendSub := <λ sub t env. {pair} (sub env) (t (sub env))>
-abbrev subTerm := <λ sub t env. t (sub env)>
 end S
 
 inductive Var : QTerm → QTerm → QTerm → Prop where
@@ -51,24 +43,19 @@ inductive Typed : QTerm → QTerm → QTerm → Prop where
 | lambda : ∀{ctx A B s},
   Typed <{S.cons} {ctx} {A}> B s
   → Typed ctx <{S.pi} {A} {B}> <{S.lambda} {s}>
+| alambda : ∀{ctx A B s},
+  Typed ctx S.U A
+  → Typed <{S.cons} {ctx} {A}> B s
+  → Typed ctx <{S.pi} {A} {B}> <{S.lambda} {s}>
 | app : ∀{ctx A B s1 s2}, Typed ctx <{S.pi} {A} {B}> s1 → Typed ctx A s2
   → Typed ctx <{S.subLast} {B} {s2}> <{S.app} {s1} {s2}>
 | var : ∀{ctx T t}, Var ctx T t → Typed ctx T t
-| Empty : ∀{ctx}, Typed ctx S.U S.Empty
 | U : ∀{ctx}, Typed ctx S.U S.U
 | Pi : ∀{ctx A B}, Typed ctx S.U A
   → Typed <{S.cons} {ctx} {A}> S.U B
   → Typed ctx S.U <{S.pi} {A} {B}>
 
-def Ren (sub ctx1 ctx2 : QTerm) : Prop :=
-    ∀{T t}, Var ctx1 T t → Var ctx2 <{S.subTerm} {sub} {T}> <{S.subTerm} {sub} {t}>
-
 macro "λcast" t:term:10 : term => `(cast (by lambda_solve) $t)
-
-def idRen {ctx : QTerm} : Ren S.idSub ctx ctx :=
-    -- fun x ↦ by lambda_solve; exact x
-    fun x ↦ λcast x
-
 
 def castVar {ctx1 ctx2 ty1 ty2 tm1 tm2}
   (prog : Var ctx1 ty1 tm1)
@@ -88,55 +75,46 @@ def castTyped {ctx1 ctx2 ty1 ty2 tm1 tm2}
   subst_vars
   exact prog
 
-def liftRen {ctx1 ctx2 T sub} (ren : Ren sub ctx1 ctx2)
-    : Ren <{S.liftSub} {sub}> <{S.cons} {ctx1} {T}> <{S.cons} {ctx2} ({S.subTerm} {sub} {T})>
-    := fun x ↦ by
-    generalize h : <{S.cons} {ctx1} {T}> = ctx at x
-    exact match x with
-    | Var.zero => by
-        eapply (castVar Var.zero) <;> (lambda_solve <;> rfl)
-    | Var.succ x' => by
-      eapply (castVar (Var.succ (ren (castVar x' ?_ ?_ ?_))))
-        <;> (lambda_solve <;> rfl)
-
-def weaken1Ren {ctx T} : Ren S.weaken1Ren ctx <{S.cons} {ctx} {T}> :=
-  fun x ↦ by
-  eapply (castVar (Var.succ x)) <;> (lambda_solve <;> rfl)
-
-axiom hole.{u} {T : Sort u} : T
-
 macro "castVarM" t:term:10 : term => `(by eapply (castVar $t) <;> (lambda_solve <;> rfl))
 macro "castTypedM" t:term:10 : term => `(by eapply (castTyped $t) <;> (lambda_solve <;> rfl))
 
-def renTerm {ctx1 ctx2 sub T t} (ren : Ren sub ctx1 ctx2)
-  (prog : Typed ctx1 T t) : Typed ctx2 <{S.subTerm} {sub} {T}> <{S.subTerm} {sub} {t}> :=
-  match prog with
-  | .lambda t => castTypedM (Typed.lambda (renTerm (liftRen ren) t))
-  | @Typed.app ctx A B s1 s2 t1 t2 => by
-      apply (castTyped (@Typed.app ctx2
-        <{S.subTerm} {sub} {A}>
-        <{S.subTerm} ({S.liftSub} {sub}) {B}>
-        <{S.subTerm} {sub} {s1}>
-        <{S.subTerm} {sub} {s2}>
-        (castTyped (renTerm ren t1) _ _ _)
-        (castTyped (renTerm ren t2) _ _ _)) _ _ _) <;> (try (lambda_solve <;> rfl))
-  | .var x => castTypedM (Typed.var (ren (castVarM x)))
-  | .Empty => castTypedM .Empty
-  | .U => castTypedM .U
-  | .Pi a b => castTypedM (Typed.Pi (castTypedM (renTerm ren a))
-    (castTypedM (renTerm (liftRen ren) b)))
+example : Typed S.nil S.U S.U :=
+  castTypedM (Typed.app (Typed.lambda (Typed.var Var.zero)) Typed.U)
 
-example : True := by simp
+-- (λ (T : U) (t : T). t) U U
+-- example : Typed S.nil S.U S.U :=
+--   castTypedM (Typed.app (castTypedM (Typed.app
+--     (Typed.alambda Typed.U (Typed.alambda (Typed.var (castVarM Var.zero)) (Typed.var Var.zero)))
+--     Typed.U)) Typed.U)
 
--- text an example of running it
-def term1 : Typed S.nil <{S.pi} {S.U} ({S.weaken} {S.U})> <{S.lambda} {S.zero}> :=
-  Typed.lambda (Typed.var Var.zero)
+-- uh oh, may need SP. lets see:
 
-#check HEq
-set_option pp.proofs true
-example : renTerm idRen term1 ≍ term1 := by
-  unfold term1
+example : Typed S.nil S.U S.U := by
+  eapply
+    (castTyped (Typed.app (castTyped (Typed.app
+    (Typed.alambda Typed.U (Typed.alambda (Typed.var (castVar Var.zero ?a ?b ?c)) (Typed.var Var.zero)))
+    Typed.U) ?d ?e ?f) Typed.U) ?g ?h ?i) <;> try (lambda_solve <;> rfl)
   --
-  simp [renTerm]
+  rotate_left
+  lambda_solve
+  rotate_left
+  lambda_solve
   --
-  sorry
+  -- regardless of what other problems exist here,
+  -- case h has two solutions, the constant function and the one that uses the U from the pair.
+  -- so even with SP, this does not have a unique solution.
+  -- what is going on here?
+  --
+
+example : Typed S.nil S.U S.U := by
+  eapply
+    (castTyped (Typed.app (castTyped (Typed.app
+    (Typed.alambda Typed.U (Typed.alambda (Typed.var (castVar Var.zero ?a ?b ?c)) (Typed.var Var.zero)))
+    Typed.U) ?d ?e ?f) Typed.U) ?g ?h ?i)
+  --
+  --
+  -- regardless of what other problems exist here,
+  -- case h has two solutions, the constant function and the one that uses the U from the pair.
+  -- so even with SP, this does not have a unique solution.
+  -- what is going on here?
+  --

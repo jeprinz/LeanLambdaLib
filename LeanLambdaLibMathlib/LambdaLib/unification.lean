@@ -44,13 +44,16 @@ macro "lambda_solve" : tactic => `(tactic|
     | simp [*] -- TODO: maybe i can use the `contextual' flag instead
     | simp (disch := (repeat' constructor) <;> grind only) only [eta_contract]
     | normalize
-    | simp only [lam_body_rw, const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2,
+    | simp only [
+      lam_body_rw, -- i checked, apparently this one is not needed in the canonicity proof
+      const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2,
       SynTerm.Constant.strConst.injEq, String.reduceEq] at *
     | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
       app_ne_const_rw2, app_ne_var_rw2] at *
   )
 )
 
+/-
 example (t1 t2 : QTerm)
   (H : < (λ x. x) {t1} > = <λ x. x>)
   : <{t1} {t2}> = t2 := by
@@ -214,3 +217,5 @@ example
 --   --
 
 -- https://github.com/tristan-f-r/mathlib4-tactics
+
+-/

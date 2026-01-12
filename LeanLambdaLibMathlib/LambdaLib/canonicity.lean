@@ -136,6 +136,7 @@ theorem fundamental_lemma {ctx T lvl t env}
     rcases (fundamental_lemma t2 mctx) with ⟨S2, In2, S2s2⟩
     generalize why2 : <{S.pi} {A} {B} {env}> = thing2 at In1
     cases In1 with | in_Pi SA SB A' B' InA InB => _ | _ <;> try (lambda_solve <;> fail)
+    normalize
     lambda_solve
     rw [In_function In2 InA] at *
     exists (SB <{s2} {env}>)

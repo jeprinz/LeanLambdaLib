@@ -217,3 +217,8 @@ theorem fundamental_lemma {ctx T lvl t env}
     exists s
 
 -- can i use the lambda functions to encode the logical predicate?
+theorem consistency {lvl val} : Typed S.nil lvl S.Empty val → False := by
+  intros t
+  rcases (fundamental_lemma t In_ctx.in_nil) with ⟨s, inS, sval⟩
+  generalize h : <{S.Empty} {S.nil}> = x at inS
+  cases inS <;> lambda_solve

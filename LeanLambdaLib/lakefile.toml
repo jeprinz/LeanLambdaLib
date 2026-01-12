@@ -1,10 +1,18 @@
-name = "LeanLambdaLilb"
+name = "LambdaLib"
 version = "0.1.0"
-defaultTargets = ["leanlambdalilb"]
+keywords = ["math"]
+defaultTargets = ["LambdaLib"]
+
+[leanOptions]
+pp.unicode.fun = true # pretty-prints `fun a ↦ b`
+relaxedAutoImplicit = false
+weak.linter.mathlibStandardSet = true
+maxSynthPendingDepth = 3
+experimental.module = true
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
 
 [[lean_lib]]
-name = "LeanLambdaLilb"
-
-[[lean_exe]]
-name = "leanlambdalilb"
-root = "Main"
+name = "LambdaLib"

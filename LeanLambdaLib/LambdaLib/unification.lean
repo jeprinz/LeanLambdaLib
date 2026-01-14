@@ -1,6 +1,13 @@
+import Qq
+import Lean
+
+
 import LambdaLib.qterm
 import LambdaLib.unificationFacts
 import Mathlib.Tactic
+
+open Lean hiding Term
+open Elab Meta Term Meta Command Qq Match PrettyPrinter Delaborator SubExpr
 
 open QuotTerm
 
@@ -11,6 +18,36 @@ as an assumption for eta rule as well as a
 zfree t1 → (t1 x = t2) = (t1 = λ x. t2)  rewrite rule.
 this will work with the repeat constructor dispatch.
 -/
+
+abbrev val_to_sub (fresh_mv : QTerm) : QTerm :=
+  <λ p. {fresh_mv} (p (λ x y. x)) (p (λ x y. y))>
+
+elab "do_pair_case" : tactic =>
+  Lean.Elab.Tactic.withMainContext do
+    let goal ← Lean.Elab.Tactic.getMainGoal
+    -- let goalDecl ← goal.getDecl
+    -- let goalType := goalDecl.type
+    let goalType ← Lean.Elab.Tactic.getMainTarget
+    -- should match on the goal to check that its in the right form with a metavar in the
+    -- right place, and if so substitute it (either directly or by applying that theorem)
+    -- or if not, it should fail so that the repeat its in knows that its done.
+    match goalType with
+      -- | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) s) t =>
+    | Expr.app (Expr.app (Expr.app (Expr.const `Eq _) _)
+        (Expr.app (Expr.app (Expr.const `QuotTerm.app _)
+          (Expr.app (Expr.app (Expr.const `QuotTerm.liftMulti _) _) (Expr.mvar mvid)))
+          (Expr.app (Expr.app (Expr.const `QuotTerm.lam _) _)
+            (Expr.app (Expr.app (Expr.const `QuotTerm.app _)
+              (Expr.app (Expr.app (Expr.const `QuotTerm.app _ ) _p) _a)) _b))))
+        _ =>
+      -- let s : TSyntax `QTerm := Lean.quote <λ x. x>
+      -- let e ← Term.elabTerm s.raw (Option.some q(QTerm))
+      let fresh_mv ← mkFreshExprMVar (Expr.const ``QTerm []) (userName := `fresh_mv)
+      mvid.assign (Expr.app (Expr.const `val_to_sub []) fresh_mv)
+      dbg_trace f!"path1"
+      -- Lean.Elab.Tactic.evalTactic (← `(tactic| apply pair_specialize_case))
+    | _ =>
+      throwTacticEx `do_pair_case goal "errro message"
 
 -- TODO: is there an idiomatic way to do the dispatches with typeclasses instead?
 
@@ -45,7 +82,8 @@ macro "lambda_solve" : tactic => `(tactic|
     | casesm* _ ∧ _
     | casesm* QTerm × QTerm
     | simp [*] -- TODO: maybe i can use the `contextual' flag instead
-    | simp (disch := (repeat' constructor) <;> grind only) only [eta_contract]
+    | simp (disch := (repeat' constructor) <;> try grind only) only
+      [eta_contract, special_case_rw] at *
     | normalize
     | simp only [
       lam_body_rw, -- i checked, apparently this one is not needed in the canonicity proof
@@ -53,6 +91,12 @@ macro "lambda_solve" : tactic => `(tactic|
       SynTerm.Constant.strConst.injEq, String.reduceEq] at *
     | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
       app_ne_const_rw2, app_ne_var_rw2] at *
+    --
+    -- | do_pair_case
+    -- NOTE: this next line should be redundant to the call with simp above IF LEAN
+    -- WASN'T STUPID. however, disch doesn't work when the goal being dispatched to
+    -- has metavariables in it.
+    -- | rw [special_case_rw] <;> try (repeat' constructor <;> grind only)
   )
 )
 
@@ -202,15 +246,39 @@ example (t : QTerm) : <λ x . {t} x> = t := by
 --   -- for some crazy reason, this doesn't work when its a Type.
 --   --
 
-example (t1 : QTerm) (H : <{liftMulti 1 t1} x> = <x>) : t1 = <λ x. x> := by
+-- TODO: why does my notation mechanism make x be var 0? shouldn't it raise an error?
+example (t : QTerm) (H : < {liftMulti 1 t} x> = <x>) : t = <λ x. x> := by
   lambda_solve
-  -- simp (disch := repeat constructor) [special_case_rw] at *
-  rw [special_case_rw] at *
-  · lambda_solve
-    --
-  · repeat constructor
-    --
+
+example (t : QTerm) (H : < {liftMulti 2 t} {var 0} {var 1} > = <A {var 0} {var 1} >)
+  : t = <λ x y. A x y> := by
+  lambda_solve
+
+example (t : QTerm) (H : < {liftMulti 2 t} {var 1} {var 0} > = <A {var 1} {var 0} >)
+  : t = <λ x y. A x y> := by
+  lambda_solve
   --
+
+-- example a b c
+--   : ∃ mv, <{liftMulti 1 mv} (λ p. p {a} {b})> = c := by
+--   refine (Exists.intro ?_ ?_)
+--   rotate_left
+--   · --
+--     -- this is where i can check that my elaborator matches
+--     -- apply pair_specialize_case_test
+--     do_pair_case
+--     normalize
+--     lambda_solve
+--     -- simp (disch := (repeat' constructor) <;> try grind only) only [special_case_rw] at *
+--     rw [special_case_rw]
+--     --
+--     sorry
+
+-- example (t : QTerm) (H : < {liftMulti 1 t} (λ p. p x y)> = <x>)
+--   : t = <λ p. p (λ x y. x)> := by
+--   lambda_solve
+--   --
+--   sorry
 
 -- useful list of all mathlib tactics
 -- https://github.com/haruhisa-enomoto/mathlib4-all-tactics/blob/main/all-tactics.md

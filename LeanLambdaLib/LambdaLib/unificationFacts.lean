@@ -377,20 +377,17 @@ theorem special_case_rw i t1 t2 (ifree : iFree i t1)
     simp [subst_var]
     rw [<- QuotTerm.subst_lift_2]
 
--- abbrev pair := <λ t1 t2 p. p t1 t2>
--- abbrev proj1 := <λ p. p (λ x y. x)>
--- abbrev proj2 := <λ p. p (λ x y. y)>
--- the idea is that this will substitute a metavariable x for (given fresh metavar x')
--- λ p. x (fst p) (snd p)
--- if this is applied to a goal of the form (x (a, b) = c)
-theorem pair_specialize_case (x' a b c : QTerm)
-  -- PROBLEM: this will only match if x', a and b are in liftMultis. but i want it to match always.
-  -- also: if i use this syntax, it will only match when the names on the lambdas are the same names.
-  -- which in a hacky way could be useful to contain this to only things i wanted to be pairs, but also
-  -- probably not right.
-  (H : <(λ p. {x'} (p (λ x y. x)) (p (λ x y. y))) (λ t1 t2 p. p {a} {b})> = c)
-  : <(λ p. {x'} (p (λ x y. x)) (p (λ x y. y))) (λ t1 t2 p. p {a} {b})> = c
-    := by trivial
+-- <(λ p. {x'} (p (λ x y. x)) (p (λ x y. y))) (λ p. p {a} {b})> = c
+-- theorem pair_specialize_case
+--   (x' a b c sp2 /-sp1 sx1 sy1 sx2 sy2-/ i)
+--   (H :
+--     app (liftMulti i <λ p. {x'} (p (λ x y. x)) (p (λ x y. y))>)
+--     (lam sp2 (app (app (var 0) a) b))
+--     = c)
+--   : app (liftMulti i <λ p. {x'} (p (λ x y. x)) (p (λ x y. y))>)
+--     (lam sp2 (app (app (var 0) a) b))
+--     = c
+--     := by assumption
 
 --------------------------------------
 -- TODO: probably delete this substMulti stuff later if i don't end up using it.

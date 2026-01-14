@@ -78,6 +78,7 @@ def castTyped {ctx1 ctx2 ty1 ty2 tm1 tm2}
 macro "castVarM" t:term:10 : term => `(by eapply (castVar $t) <;> (lambda_solve <;> rfl))
 macro "castTypedM" t:term:10 : term => `(by eapply (castTyped $t) <;> (lambda_solve <;> rfl))
 
+-- seems like the pair case messes up old things that used to work...
 example : Typed S.nil S.U S.U :=
   castTypedM (Typed.app (Typed.lambda (Typed.var Var.zero)) Typed.U)
 
@@ -89,32 +90,28 @@ example : Typed S.nil S.U S.U :=
 
 -- uh oh, may need SP. lets see:
 
-example : Typed S.nil S.U S.U := by
-  eapply
-    (castTyped (Typed.app (castTyped (Typed.app
-    (Typed.alambda Typed.U (Typed.alambda (Typed.var (castVar Var.zero ?a ?b ?c)) (Typed.var Var.zero)))
-    Typed.U) ?d ?e ?f) Typed.U) ?g ?h ?i) <;> try (lambda_solve <;> rfl)
-  --
-  rotate_left
-  lambda_solve
-  rotate_left
-  lambda_solve
-  --
-  -- regardless of what other problems exist here,
-  -- case h has two solutions, the constant function and the one that uses the U from the pair.
-  -- so even with SP, this does not have a unique solution.
-  -- what is going on here?
-  --
+set_option trace.Meta.Tactic.simp.discharge true
+
+-- inductive Test : Nat → Prop where
+-- theorem rewrite_test_2 (n : Nat) (H : Test n) : (n + 1 = n) = True := by sorry
+-- example : exists n : Nat, n + 1 = n := by
+--   eapply Exists.intro
+--   simp (disch := sorry) only [rewrite_test_2]
+--   sorry
 
 example : Typed S.nil S.U S.U := by
   eapply
     (castTyped (Typed.app (castTyped (Typed.app
     (Typed.alambda Typed.U (Typed.alambda (Typed.var (castVar Var.zero ?a ?b ?c)) (Typed.var Var.zero)))
-    Typed.U) ?d ?e ?f) Typed.U) ?g ?h ?i)
+    Typed.U) ?d ?e ?f) Typed.U) ?g ?h ?i) <;> repeat' (lambda_solve <;> try rfl)
   --
+  rotate_left
+  lambda_solve
   --
-  -- regardless of what other problems exist here,
-  -- case h has two solutions, the constant function and the one that uses the U from the pair.
-  -- so even with SP, this does not have a unique solution.
-  -- what is going on here?
-  --
+  apply Eq.symm
+  do_pair_case
+  lambda_solve
+  -- it makes no sense that this dispatch fails, given that the tactic is sorry.
+  -- surely this is a lean bug, but i'll have to investigate in a minimal test case.
+  -- simp (disch := sorry) [special_case_rw]
+  rw [special_case_rw] <;> try (repeat' constructor <;> grind only)

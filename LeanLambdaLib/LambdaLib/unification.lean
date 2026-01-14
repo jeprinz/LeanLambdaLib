@@ -23,6 +23,9 @@ macro "normalize" : tactic => `(tactic|
     liftMultiLiftMulti,
     liftZeroToLiftMulti, -- is this good?
     beta,
+    --
+    substMulti, substMultiConst, substMultiEmpty, substMultiApp, substMultiLam,
+    substMultiVar_rw, -- substMulti new ones
     -- eta_contract,
     --
     --
@@ -53,7 +56,6 @@ macro "lambda_solve" : tactic => `(tactic|
   )
 )
 
-/-
 example (t1 t2 : QTerm)
   (H : < (λ x. x) {t1} > = <λ x. x>)
   : <{t1} {t2}> = t2 := by
@@ -160,14 +162,6 @@ example (t1 t2 t1' t2' : QTerm)
   : t1 = t1' := by
   lambda_solve
 
--- this turns any remaining lifts into liftMulti's, and also simplifies any substs
--- that can then be simplified
-macro "fix_lifts" : tactic => `(tactic|
-  -- simp should go inside terms first, which would work correctly for multiple layers of lifts.
-  simp only [
-  ] at *
-)
-
 example (B C : QTerm) (H : <(λ x y z. A x y z) {B} D E> = <(λ x y z . A x y z) {C} D E>)
   : B = C := by
   lambda_solve
@@ -194,17 +188,28 @@ example : <λ x y z w . A x y z w> = <A> := by
 example (t : QTerm) : <λ x . {t} x> = t := by
   lambda_solve
 
-inductive IndexedType : QTerm → Type where
-inductive IndexedProp : QTerm → Prop where
+-- demonstration of a problem with simp and indexed types:
+-- inductive IndexedType : QTerm → Type where
+-- inductive IndexedProp : QTerm → Prop where
+--
+-- example
+--   (H1 : IndexedType <(λ x . x) A>)
+--   (H2 : IndexedProp <(λ x . x) A>)
+--    : IndexedType <A> × Inhabited (IndexedProp <A>):= by
+--   lambda_solve
+--   sorry
+--   -- simp only [beta] at *
+--   -- for some crazy reason, this doesn't work when its a Type.
+--   --
 
-example
-  (H1 : IndexedType <(λ x . x) A>)
-  (H2 : IndexedProp <(λ x . x) A>)
-   : IndexedType <A> × Inhabited (IndexedProp <A>):= by
+example (t1 : QTerm) (H : <{liftMulti 1 t1} x> = <x>) : t1 = <λ x. x> := by
   lambda_solve
-  sorry
-  -- simp only [beta] at *
-  -- for some crazy reason, this doesn't work when its a Type.
+  -- simp (disch := repeat constructor) [special_case_rw] at *
+  rw [special_case_rw] at *
+  · lambda_solve
+    --
+  · repeat constructor
+    --
   --
 
 -- useful list of all mathlib tactics
@@ -217,5 +222,3 @@ example
 --   --
 
 -- https://github.com/tristan-f-r/mathlib4-tactics
-
--/

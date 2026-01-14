@@ -93,32 +93,34 @@ theorem In_function {lvl T S1 S2} (out1 : In lvl T S1) (out2 : In lvl T S2) : S1
 -- i've decided that i want to represent substs and lifts as fundamentally a sequence of substs and lifts
 -- for now, i can simplify and represent as a list of QTerms, and then there will be multiSubst
 -- that takes a list of QTerms and a QTerm and does the subst.
-inductive In_ctx : (QTerm → QTerm) → QTerm → Prop where
-| in_nil : In_ctx (fun t ↦ t) S.nil
+inductive In_ctx : (List QTerm) → QTerm → Prop where
+| in_nil : In_ctx [] S.nil
 | in_cons : ∀ {env ctx lvl val T s},
   In_ctx env ctx
-  → In (.succ lvl) (env T) s
+  → In (.succ lvl) (substMulti 0 env T) s
   → s val
-  → In_ctx (fun t ↦ env (subst 0 val t)) <{S.cons} {ctx} {const (.natConst lvl)} {T}>
+  → In_ctx (val :: env) <{S.cons} {ctx} {const (.natConst lvl)} {T}>
 
 theorem fundamental_lemma {ctx T lvl t env}
   (mT : Typed ctx lvl T t)
   (mctx : In_ctx env ctx)
-  : ∃ s, In (.succ lvl) (env T) s ∧ s (env t)
+  : ∃ s, In (.succ lvl) (substMulti 0 env T) s ∧ s (substMulti 0 env t)
   :=
   match mT with
   | @Typed.lambda ctx A B s lvl tyAB body => by
     have ⟨sAB, InSAB, SaAB⟩ := fundamental_lemma tyAB mctx
-    generalize why : (env S.U) = thing at InSAB
+    generalize why : (substMulti 0 env S.U) = thing at InSAB
     cases InSAB <;> (try lambda_solve <;> fail)
     rcases SaAB with ⟨SAB, InABS⟩
-    generalize why2 : <{S.pi} {A} {B} {env}> = thing2 at InABS
+    generalize why2 : (substMulti 0 env (S.pi A B)) = thing2 at InABS
     cases InABS with | in_Pi SA SB A' B' InA InB => _ | _ <;> try (lambda_solve <;> fail)
     exists (fun f ↦ ∀ a, SA a → SB a <{f} {a}>)
     apply And.intro
     · apply @In'.in_Pi (In lvl) SA SB A' B' InA InB
     · simp
       intros a SAa
+      normalize
+      --
       lambda_solve
       rcases fundamental_lemma body (In_ctx.in_cons mctx InA SAa) with ⟨SBa, InSBa, thing⟩
       normalize

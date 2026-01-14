@@ -293,6 +293,7 @@ inductive iFree : Nat → QTerm → Prop where
 | app : ∀ a b i, iFree i a → iFree i b → iFree i (app a b)
 | const : ∀ c i, iFree i (const c)
 | liftMulti : ∀ i j t, j > i → iFree i (liftMulti j t)
+| lift : ∀ i t, iFree i (lift i t)
 
 theorem iFreeLift {t i} (ifree : iFree i t)
   : ∃ t', t = QuotTerm.lift i t' := by
@@ -319,14 +320,146 @@ theorem iFreeLift {t i} (ifree : iFree i t)
     exists (liftMulti i (liftMulti a t))
     rw [_root_.liftMultiLiftMulti]
     rw [QuotTerm.liftLiftMulti] <;> grind
+  | lift i t => exists t
 
 theorem eta_contract s t (H : iFree 0 t) : lam s (app t (var 0)) = subst 0 <Dummy> t := by
   have ⟨t', eq⟩ := iFreeLift H
   subst t
   simp [eta]
-  apply Quotient.ind _ t'
-  intros t
-  simp [QuotTerm.subst, QuotTerm.lift, QuotTerm.const]
-  apply Quotient.sound
-  simp [subst_lift]
-  apply refl
+  rw [QuotTerm.subst_lift]
+
+--------------------------------------
+
+-- need to generalize this
+theorem special_case_0 t1 t2 (ifree : iFree 0 t1) (H : app t1 (var 0) = t2)
+  : subst 0 <Dummy> t1 = lam "x" t2 := by
+  subst t2
+  rw [eta_contract]
+  assumption
+
+theorem special_case i t1 t2 (ifree : iFree i t1) (H : app t1 (var i) = t2)
+  : subst i <Dummy> t1 = lam "x" (subst i.succ (var 0) (lift 0 t2)) := by
+  subst t2
+  simp only [Nat.succ_eq_add_one, lift_app, lift_var, ge_iff_le, Nat.zero_le,
+    ↓reduceIte, subst_app, subst_var, lt_self_iff_false, BEq.rfl]
+  have fact : ∀ t, QuotTerm.lift 0 (QuotTerm.lift i t)
+    = QuotTerm.lift i.succ (QuotTerm.lift 0 t) := by
+    intros
+    rw (occs := [2]) [QuotTerm.lift_lift] <;> simp
+  rw [eta_contract]
+  · rcases iFreeLift ifree with ⟨t1', rfl⟩
+    rw [fact]
+    clear fact
+    repeat rw [QuotTerm.subst_lift]
+  · rcases iFreeLift ifree with ⟨t1', rfl⟩
+    rw [fact]
+    clear fact
+    repeat rw [QuotTerm.subst_lift]
+    constructor
+
+-- then the idea would be special_case_rw : (t1 x = t2) = (t1 = λ x. t2)
+theorem special_case_rw i t1 t2 (ifree : iFree i t1)
+  : (app t1 (var i) = t2) =
+    (subst i <Dummy> t1 = lam "x" (subst i.succ (var 0) (lift 0 t2))) := by
+  apply propext
+  apply Iff.intro
+  · apply special_case ; assumption
+  · intros p
+    rcases iFreeLift ifree with ⟨t1', rfl⟩
+    clear ifree
+    rw [QuotTerm.subst_lift] at p
+    subst t1'
+    simp only [lift_lam, beta]
+    simp only [QuotTerm.lift_subst, lt_self_iff_false, ↓reduceIte, lift_var]
+    simp [QuotTerm.lift_lift]
+    simp [QuotTerm.subst_subst_2]
+    simp [QuotTerm.subst_lift]
+    simp [subst_var]
+    rw [<- QuotTerm.subst_lift_2]
+
+-- abbrev pair := <λ t1 t2 p. p t1 t2>
+-- abbrev proj1 := <λ p. p (λ x y. x)>
+-- abbrev proj2 := <λ p. p (λ x y. y)>
+-- the idea is that this will substitute a metavariable x for (given fresh metavar x')
+-- λ p. x (fst p) (snd p)
+-- if this is applied to a goal of the form (x (a, b) = c)
+theorem pair_specialize_case (x' a b c : QTerm)
+  -- PROBLEM: this will only match if x', a and b are in liftMultis. but i want it to match always.
+  -- also: if i use this syntax, it will only match when the names on the lambdas are the same names.
+  -- which in a hacky way could be useful to contain this to only things i wanted to be pairs, but also
+  -- probably not right.
+  (H : <(λ p. {x'} (p (λ x y. x)) (p (λ x y. y))) (λ t1 t2 p. p {a} {b})> = c)
+  : <(λ p. {x'} (p (λ x y. x)) (p (λ x y. y))) (λ t1 t2 p. p {a} {b})> = c
+    := by trivial
+
+--------------------------------------
+-- TODO: probably delete this substMulti stuff later if i don't end up using it.
+
+def substMulti (i : Nat) (ts : List QTerm) (t : QTerm) : QTerm :=
+  match ts with
+  | [] => t
+  | t1 :: ts' => substMulti i ts' (subst i (liftMulti i t1) t)
+  -- an alternate idea is to do the lifts on the ts in the substMultiLam rewrite?
+
+theorem substMultiConst i ts c : substMulti i ts (const c) = const c := by
+  induction ts with
+  | nil => rfl
+  | cons head tail ih =>
+    simp [substMulti]
+    rw [subst_const]
+    assumption
+
+theorem substMultiEmpty i t : substMulti i [] t = t := by rfl
+
+theorem substMultiSubst i t1 t2 ts -- this one is not to be maximally rewritten indescriminately
+  : substMulti i (t1 :: ts) t2 = substMulti i ts (subst i (liftMulti i t1) t2) := by rfl
+
+theorem substMultiApp i ts t1 t2 : substMulti i ts (app t1 t2)
+  = app (substMulti i ts t1) (substMulti i ts t2) := by
+  induction ts generalizing t1 t2 with
+  | nil => rfl
+  | cons head tail ih =>
+    simp [substMulti]
+    rw [subst_app]
+    rw [ih]
+
+theorem substMultiLam i ts s t : substMulti i ts (lam s t) = lam s (substMulti i.succ ts t) := by
+  induction ts generalizing t with
+  | nil => rfl
+  | cons head tail ih =>
+    simp [substMulti]
+    rw [subst_lam]
+    rw [ih]
+    rw [<- QuotTerm.liftLiftMulti]
+    simp
+
+theorem substMultiVar_rw i t1 x ts
+  : substMulti i (t1 :: ts) (var x) = substMulti i ts (subst i (liftMulti i t1) (var x)) :=
+  by apply substMultiSubst
+
+-- theorem substSubstMulti env t t'
+--   : (subst 0 t' (substMulti 1 env t)) = substMulti 0 env (subst 0 t' t) := by
+--   induction env generalizing t with
+--   | nil => rfl
+--   | cons head tail ih =>
+--     simp [substMulti]
+--     rw [ih]
+--     simp [<- QuotTerm.liftLiftMulti, liftMultiZero]
+--     simp [QuotTerm.subst_subst]
+--     --
+--     sorry
+
+-- theorem substSubstMulti env i t t'
+--   : (subst i t' (substMulti i.succ env t)) = substMulti i env (subst i t' t) := by
+--   induction env generalizing t with
+--   | nil => rfl
+--   | cons head tail ih =>
+--     --
+--     --
+--     simp [substMulti]
+--     rw [ih]
+--     --
+--     simp [QuotTerm.subst_subst]
+--     --
+--     simp [QuotTerm.substLiftMulti]
+--     --

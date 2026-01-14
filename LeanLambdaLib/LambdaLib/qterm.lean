@@ -156,6 +156,37 @@ theorem subst_var {k i t} : subst k t (var i)
   simp [subst, var, SynTerm.subst]
   repeat' (first | split | trivial)
 
+theorem subst_subst (i1 i2 : Nat) (t1 t2 t : QTerm) (H : i1 >= i2) :
+    subst i1 t1 (subst i2 t2 t) =
+      subst i2 (subst i1 t1 t2) (subst i1.succ (lift i2 t1) t) := by
+  apply Quotient.ind _ t
+  apply Quotient.ind _ t2
+  apply Quotient.ind _ t1
+  intros
+  simp only [subst, Quotient.map₂_mk, lift, Quotient.map_mk]
+  rw [SynTerm.subst_subst]
+  assumption
+
+theorem subst_subst_2 (i1 i2 : Nat) (t1 t2 t : QTerm) (H : i1 < i2) :
+    subst i1 t1 (subst i2 t2 t) =
+      subst i2.pred (subst i1 t1 t2) (subst i1 (lift i2.pred t1) t) := by
+  apply Quotient.ind _ t
+  apply Quotient.ind _ t2
+  apply Quotient.ind _ t1
+  intros
+  simp only [subst, Quotient.map₂_mk, lift, Quotient.map_mk]
+  rw [SynTerm.subst_subst_2]
+  assumption
+
+theorem subst_lift_2 (i : Nat) {t : QTerm} :
+    t = subst i (var i) (lift (Nat.succ i) t) := by
+  apply Quotient.ind _ t
+  intros t
+  simp [subst, lift, var]
+  apply Quotient.sound
+  rw (occs := [1]) [@SynTerm.subst_lift_2 i t]
+  apply refl
+
 theorem liftLiftMulti (n i : Nat) (H : i ≤ n) (t : QTerm)
   : lift i (liftMulti n t) = liftMulti (Nat.succ n) t := by
   apply Quotient.ind _ t
@@ -263,6 +294,33 @@ theorem lam_body {t1 t2 s1 s2} (H : lam s1 t1 = lam s2 t2) : t1 = t2 := by
   simp [subst, lift, var] at H
   repeat rw [<- SynTerm.subst_lift_2] at H
   assumption
+
+theorem lift_lift (i1 i2 : Nat) (t : QTerm) (H : i2 < i1) :
+    lift i1 (lift i2 t) = lift i2 (lift (Nat.pred i1) t) := by
+  apply Quotient.ind _ t
+  intros
+  simp [ lift]
+  rw [SynTerm.lift_lift] <;> try assumption
+  rfl
+
+theorem subst_lift (i : Nat) (t1 t2 : QTerm) : subst i t1 (lift i t2) = t2 := by
+  apply Quotient.ind _ t1
+  apply Quotient.ind _ t2
+  intros
+  simp [subst, lift]
+  simp [SynTerm.subst_lift]
+
+theorem lift_subst (i1 i2 : Nat) (t1 t : QTerm) :
+    lift i1 (subst i2 t1 t) =
+      if i1 < i2
+        then subst (Nat.succ i2) (lift i1 t1) (lift i1 t)
+        else subst i2 (lift i1 t1) (lift (Nat.succ i1) t) := by
+  apply Quotient.ind _ t1
+  apply Quotient.ind _ t
+  intros
+  simp [subst, lift]
+  simp [SynTerm.lift_subst]
+  grind only [cases Or]
 
 -- TODO: i could put strings on the vars, which don't do anything and there would be an
 -- equivalence rule for changing them around.

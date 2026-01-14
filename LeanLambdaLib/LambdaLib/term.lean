@@ -218,6 +218,32 @@ theorem subst_lift_2 (i : Nat) {t : Term} :
     · apply ih1
     · apply ih2
 
+theorem subst_subst_2 (i1 i2 : Nat) (t1 t2 t : Term) (H : i1 < i2) :
+    subst i1 t1 (subst i2 t2 t) =
+      subst i2.pred (subst i1 t1 t2) (subst i1 (lift i2.pred t1) t) := by
+  revert i1 i2 t1 t2
+  induction t with
+  | var i =>
+    intros
+    repeat' (first | simp [subst] | split | cutsat | contradiction | rw [subst_lift])
+  | const c =>
+    intros
+    simp [subst]
+  | lam s t ih =>
+    intros
+    simp [subst]
+    rw [ih] <;> try cutsat
+    simp
+    rw [lift_lift] <;> try cutsat
+    rw [lift_subst]
+    repeat' (first | simp | split | cutsat )
+    rewrite [subst_lift_off_by_1] <;> cutsat
+  | app t1 t2 ih1 ih2 =>
+    intros
+    simp [subst]
+    rw [ih1, ih2]
+    repeat (first | simp | split | cutsat | contradiction)
+
 --------------------------------------------------------------------------------
 ---------- A proof of confluence for beta alone without eta -------------------
 --------------------------------------------------------------------------------

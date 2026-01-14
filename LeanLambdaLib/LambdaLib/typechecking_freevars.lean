@@ -14,15 +14,8 @@ abbrev nil := <Nil>
 abbrev cons := <Cons> -- takes ctx, lvl, and type
 
 
--- abbrev pi := <λ x y env. Pi (x env) (λ a. y ({pair} env a))>
 abbrev pi (A B : QTerm) := app (app <Pi> A) (lam "a" B)
 abbrev U := <U>
-
--- abbrev lambda := <λ t env a. t ({pair} env a)>
--- abbrev app := <λ t1 t2 env. (t1 env) (t2 env)>
-
--- abbrev weaken := <λ t env. t ({proj1} env)>
--- abbrev subLast := <λ t toSub env. t ({pair} env (toSub env))>
 end S
 
 inductive Var : QTerm → QTerm → Nat → Prop where

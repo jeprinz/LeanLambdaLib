@@ -7,6 +7,9 @@ open QuotTerm
 -- the idea in this file is to implement programming by typed pattern matching
 -- in the rocq version, this ran into transports getting stuck
 -- probably lean's proof-irrelevant prop won't help much, but it might help a little.
+-- NOTE: see https://lean-lang.org/doc/reference/latest/Tactic-Proofs/Tactic-Reference/
+-- specifically, 13.5.9. Cast Management
+-- and https://arxiv.org/pdf/2001.10594
 
 namespace S
 abbrev pair := <λ t1 t2 p. p t1 t2>

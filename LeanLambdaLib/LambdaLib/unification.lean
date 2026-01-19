@@ -59,7 +59,7 @@ elab "do_pair_case" : tactic =>
     -- right place, and if so substitute it (either directly or by applying that theorem)
     -- or if not, it should fail so that the repeat its in knows that its done.
     match goalType with
-      -- | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) s) t =>
+    -- TODO: i should probably support the opposite ordering here as well
     | Expr.app (Expr.app (Expr.app (Expr.const `Eq _) _)
         (Expr.app (Expr.app (Expr.const `QuotTerm.app _)
           (Expr.app (Expr.app (Expr.const `QuotTerm.liftMulti _) _) (Expr.mvar mvid)))
@@ -67,8 +67,6 @@ elab "do_pair_case" : tactic =>
             (Expr.app (Expr.app (Expr.const `QuotTerm.app _)
               (Expr.app (Expr.app (Expr.const `QuotTerm.app _ ) _p) _a)) _b))))
         _ =>
-      -- let s : TSyntax `QTerm := Lean.quote <λ x. x>
-      -- let e ← Term.elabTerm s.raw (Option.some q(QTerm))
       let fresh_mv ← mkFreshExprMVar (Expr.const ``QTerm []) (userName := `fresh_mv)
       mvid.assign (Expr.app (Expr.const `val_to_sub []) fresh_mv)
     | _ =>
@@ -76,7 +74,6 @@ elab "do_pair_case" : tactic =>
 
 macro "lambda_solve" : tactic => `(tactic|
   repeat ( first
-    -- | simp at * -- TODO: figure out which lemmas this is using (relating to ∧) and write explicitly
     | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
     | casesm* _ ∧ _
     | casesm* QTerm × QTerm
@@ -91,12 +88,14 @@ macro "lambda_solve" : tactic => `(tactic|
       SynTerm.Constant.strConst.injEq, String.reduceEq] at *
     | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
       app_ne_const_rw2, app_ne_var_rw2] at *
-    --
-    -- | do_pair_case
-    -- NOTE: this next line should be redundant to the call with simp above IF LEAN
+    | do_pair_case
+    -- NOTE: these next two lines should be redundant to the call with simp above IF LEAN
     -- WASN'T STUPID. however, disch doesn't work when the goal being dispatched to
     -- has metavariables in it.
-    -- | rw [special_case_rw] <;> try (repeat' constructor <;> grind only)
+    | (rw [special_case_rw] at *
+      ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)) <;> [skip]
+    | (apply Eq.symm; rw [special_case_rw] at *
+      ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)) <;> [skip]
   )
 )
 

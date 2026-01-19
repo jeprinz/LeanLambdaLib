@@ -88,68 +88,30 @@ example : Typed S.nil S.U S.U :=
 --     (Typed.alambda Typed.U (Typed.alambda (Typed.var (castVarM Var.zero)) (Typed.var Var.zero)))
 --     Typed.U)) Typed.U)
 
--- uh oh, may need SP. lets see:
-
--- set_option trace.Meta.Tactic.simp.discharge true
-
--- inductive Test : Nat → Prop where
--- theorem rewrite_test_2 (n : Nat) (H : Test n) : (n + 1 = n) = True := by sorry
--- example : exists n : Nat, n + 1 = n := by
---   eapply Exists.intro
---   simp (disch := sorry) only [rewrite_test_2]
---   sorry
-
-macro "lambda_solve2" : tactic => `(tactic|
-  repeat ( first
-    -- | simp at * -- TODO: figure out which lemmas this is using (relating to ∧) and write explicitly
-    | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
-    | casesm* _ ∧ _
-    | casesm* QTerm × QTerm
-    | simp [*] -- TODO: maybe i can use the `contextual' flag instead
-    | simp (disch := (repeat' constructor) <;> grind only) only
-      [eta_contract] at *
-      -- [eta_contract, special_case_rw] at *
-    | normalize
-    | simp only [
-      lam_body_rw, -- i checked, apparently this one is not needed in the canonicity proof
-      const_inj_rw, var_inj_rw, var_not_const_rw, var_not_const_rw2,
-      SynTerm.Constant.strConst.injEq, String.reduceEq] at *
-    | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
-      app_ne_const_rw2, app_ne_var_rw2] at *
-    --
-    | do_pair_case
-    -- NOTE: this next line should be redundant to the call with simp above IF LEAN
-    -- WASN'T STUPID. however, disch doesn't work when the goal being dispatched to
-    -- has metavariables in it.
-    -- | rw [special_case_rw] <;> try (repeat' constructor <;> grind only)
-    -- | try (rw [special_case_rw]; pick_goal 2; ((repeat' constructor) <;> grind only))
-    -- this one seems like it works, but there is still an infinite loop for some reason
-    -- | rw [special_case_rw] at * ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)
-    -- the <;> [skip] is necessary to make sure that it ended up with only 1 goal at the end,
-    -- to stop the case where it rewrites a metavar and creates more goals.
-    | (rw [special_case_rw] at * ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)) <;> [skip]
-    | (apply Eq.symm; rw [special_case_rw] at * ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)) <;> [skip]
-  )
-)
-
-theorem make_another_goal {T : Prop}  (t : T) (x : False) : T := t
-
-example (t : QTerm) (H : <{liftMulti 2 t} {var 0} {var 0}> = (var 0)) : t = <λ x. x> := by
-  lambda_solve2
+example : Typed S.nil S.U S.U := by
+  eapply
+    (castTyped (.app (castTyped (.app
+    (.alambda .U (.alambda (.var (castVar Var.zero ?a ?b ?c)) (.var Var.zero)))
+    .U) ?d ?e ?f) .U) ?g ?h ?i)
   --
-  -- try (rw [special_case_rw] at * ; pick_goal 2; ((repeat' constructor) <;> grind only))
-  -- this seems plausable:
-  -- try (rw [special_case_rw] at * ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail))
-  -- apply make_another_goal <;>
---     try (rw [special_case_rw] at * ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail))
---   --
+  -- superrepeat
+  repeat (any_goals (first | fail_if_no_progress lambda_solve | rfl))
+  --
+
+def mycast {A B}
+  (a : A)
+  (h : A = B)
+  : B := by
+  subst_vars
+  exact a
 
 example : Typed S.nil S.U S.U := by
   eapply
-    (castTyped (Typed.app (castTyped (Typed.app
-    (Typed.alambda Typed.U (Typed.alambda (Typed.var (castVar Var.zero ?a ?b ?c)) (Typed.var Var.zero)))
-    Typed.U) ?d ?e ?f) Typed.U) ?g ?h ?i)
+    (mycast (Typed.app (mycast (Typed.app
+    (Typed.alambda Typed.U (Typed.alambda (Typed.var (mycast Var.zero ?a)) (Typed.var Var.zero)))
+    Typed.U) ?d) Typed.U) ?g)
   --
-  -- superrepeat
-  repeat (any_goals (first | fail_if_no_progress lambda_solve2 | rfl))
+  repeat (any_goals (first | fail_if_no_progress lambda_solve | rfl))
+  --
+  --
   --

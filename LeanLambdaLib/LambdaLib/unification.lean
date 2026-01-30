@@ -45,6 +45,8 @@ macro "normalize" : tactic => `(tactic|
 open Lean hiding Term
 open Elab Meta Term Meta Command Qq Match PrettyPrinter Delaborator SubExpr
 
+-- partial def is_pattern (e : Expr) : MetaM Bool := do
+  -- return true
 
 abbrev val_to_sub (fresh_mv : QTerm) : QTerm :=
   <λ p. {fresh_mv} (p (λ x y. x)) (p (λ x y. y))>
@@ -77,7 +79,8 @@ macro "lambda_solve" : tactic => `(tactic|
     | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
     | casesm* _ ∧ _
     | casesm* QTerm × QTerm
-    | simp [*] -- TODO: maybe i can use the `contextual' flag instead
+    | simp only [*, and_self, and_true, true_and,
+      and_false, false_and] -- TODO: maybe i can use the `contextual' flag instead
     | simp (disch := (repeat' constructor) <;> grind only) only
       [eta_contract] at *
       -- [eta_contract, special_case_rw] at *
@@ -89,6 +92,7 @@ macro "lambda_solve" : tactic => `(tactic|
     | simp (disch := repeat constructor) only [app_fact_rw, app_ne_const_rw, app_ne_var_rw,
       app_ne_const_rw2, app_ne_var_rw2] at *
     | do_pair_case
+    | apply Eq.symm; do_pair_case
     -- NOTE: these next two lines should be redundant to the call with simp above IF LEAN
     -- WASN'T STUPID. however, disch doesn't work when the goal being dispatched to
     -- has metavariables in it.
@@ -96,6 +100,9 @@ macro "lambda_solve" : tactic => `(tactic|
       ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)) <;> [skip]
     | (apply Eq.symm; rw [special_case_rw] at *
       ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)) <;> [skip]
+    -- again, this should be redundant except for the bug with disch and metavars
+    | (rw [app_fact_rw] at *
+      ; (iterate 2 on_goal 2 => ((repeat constructor) <;> fail))) <;> [skip]
   )
 )
 
@@ -179,6 +186,7 @@ example (t1 t2 : QTerm)
   (H : <A B C> = <A {t1} {t2} >)
   : <Res {t1} {t2}> = <Res B C> := by
   lambda_solve
+  --
 
 example (t : Prod QTerm QTerm)
   (H : <A B C> = <A {t.1} {t.2} >)

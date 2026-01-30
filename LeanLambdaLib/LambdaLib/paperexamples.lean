@@ -14,5 +14,8 @@ inductive Deriv : Γ → ty → Type where
 | app : ∀ {Γ A B}, Deriv Γ (.arrow A B) → Deriv Γ A → Deriv Γ B
 | tt : ∀ {Γ}, Deriv Γ .base
 
-def prog : Deriv [] (.arrow (.arrow .base .base) (.arrow .base .base)) :=
+def prog : Deriv [] .base :=
+  .app (.lambda (.var .zero)) .tt
+
+def prog2 : Deriv [] (.arrow (.arrow .base .base) (.arrow .base .base)) :=
   .lambda (.lambda (.app (.var (.succ .zero)) (.var .zero)))

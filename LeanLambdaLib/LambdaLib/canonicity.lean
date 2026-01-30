@@ -87,26 +87,19 @@ theorem In_function {lvl T S1 S2} (out1 : In lvl T S1) (out2 : In lvl T S2) : S1
   | zero =>
     grind only [In]
   | succ lvl' ih =>
-    induction out1 generalizing S2 with
-    | in_Empty =>
-      generalize h : <Empty> = x at out2
-      cases out2 <;> lambda_solve
-    | in_Type =>
-      generalize h : <U> = x at out2
-      cases out2 <;> lambda_solve
+    generalize h : T = T' at out2
+    induction out1 generalizing S2 T' with
     | in_Lift T S uh =>
-      generalize h : <Lift {T}> = x at out2
-      cases out2 <;> try lambda_solve
+      cases out2 <;> lambda_solve
       apply ih <;> assumption
     | in_Pi s F A B x y ih_s ih_F =>
-      generalize h : <Pi {A} {B}> = x at out2
-      generalize s2eq : S2 = S2' at out2
       induction out2 with | in_Pi s' F' A' B' InA's' InB'aF' _ _ => _ | _ <;> lambda_solve
-      rw [<- @ih_s s' InA's'] at *
+      rw [<- @ih_s s' A' rfl InA's'] at *
       apply funext; intros f
       apply forall_ext; intros a
       apply forall_ext; intros Sa
-      rw [@ih_F a Sa (F' a) (InB'aF' a Sa)]
+      rw [@ih_F a Sa (F' a) _ rfl (InB'aF' a Sa)]
+    | _ => cases out2 <;> lambda_solve -- the other cases are straightforward
 
 theorem fundamental_lemma {ctx T lvl t env}
   (mT : Typed ctx lvl T t)

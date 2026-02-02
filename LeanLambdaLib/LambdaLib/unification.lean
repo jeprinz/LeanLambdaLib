@@ -45,8 +45,19 @@ macro "normalize" : tactic => `(tactic|
 open Lean hiding Term
 open Elab Meta Term Meta Command Qq Match PrettyPrinter Delaborator SubExpr
 
--- partial def is_pattern (e : Expr) : MetaM Bool := do
-  -- return true
+partial def is_pattern (e : Expr) (seenpair : Bool) : MetaM Bool := do
+  match e with
+  | Expr.app (Expr.app (Expr.const `QuotTerm.lam _) _)
+      (Expr.app (Expr.app (Expr.const `QuotTerm.app _)
+      (Expr.app (Expr.app (Expr.const `QuotTerm.app _ )
+      -- TODO: should check that the zero is actually index zero instead of just calling it zero
+      (Expr.app (Expr.const `QuotTerm.var _) _zero)) a)) b)
+    => do let x <- is_pattern a true
+          let y <- is_pattern b true
+          return x && y
+  -- TODO: should also check that indices are unique
+  | Expr.app (Expr.const `QuotTerm.var _) _index => return seenpair
+  | _ => return false
 
 abbrev val_to_sub (fresh_mv : QTerm) : QTerm :=
   <λ p. {fresh_mv} (p (λ x y. x)) (p (λ x y. y))>
@@ -65,12 +76,13 @@ elab "do_pair_case" : tactic =>
     | Expr.app (Expr.app (Expr.app (Expr.const `Eq _) _)
         (Expr.app (Expr.app (Expr.const `QuotTerm.app _)
           (Expr.app (Expr.app (Expr.const `QuotTerm.liftMulti _) _) (Expr.mvar mvid)))
-          (Expr.app (Expr.app (Expr.const `QuotTerm.lam _) _)
-            (Expr.app (Expr.app (Expr.const `QuotTerm.app _)
-              (Expr.app (Expr.app (Expr.const `QuotTerm.app _ ) _p) _a)) _b))))
+          pattern))
         _ =>
-      let fresh_mv ← mkFreshExprMVar (Expr.const ``QTerm []) (userName := `fresh_mv)
-      mvid.assign (Expr.app (Expr.const `val_to_sub []) fresh_mv)
+      let isgood <- is_pattern pattern false
+      if isgood then
+        let fresh_mv ← mkFreshExprMVar (Expr.const ``QTerm []) (userName := `fresh_mv)
+        mvid.assign (Expr.app (Expr.const `val_to_sub []) fresh_mv)
+      else throwTacticEx `do_pair_case goal "pattern was not right"
     | _ =>
       throwTacticEx `do_pair_case goal "errro message"
 

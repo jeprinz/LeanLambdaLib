@@ -65,29 +65,26 @@ macro "{" t:term:10 "}" : term => `(mycast $t ?_)
 example : Typed S.nil S.U S.U := by
   eapply {Typed.app {Typed.app (.alambda .U (.alambda (.var {Var.zero}) (.var .zero))) .U} .U}
   --
-  -- TODO: why do these things crash while mega_lambda_solve doesn't?
-  iterate 7 rotate_left
+  -- mega_lambda_solve
   --
+  iterate 7 rotate_left
   congr 1
   lambda_solve
-  --
   rotate_left
   --
-  congr 1 <;> normalize
-  -- TODO: i need to fix lambda_solve pair case so that this next line WOULDN'T simplify this!!!
+  -- congr 1 <;> normalize
+  -- -- TODO: i need to fix lambda_solve pair case so that this next line WOULDN'T simplify this!!!
   -- lambda_solve -- this shouldn't do the pair case, since its not vars!
   --
-  --
   rotate_right
-  --
   -- OK, here we are
-  --
   congr 1
+  --
   --
   lambda_solve <;> rfl
   --
   normalize
   --
-  --
+  lambda_solve
   -- mega_lambda_solve
   --

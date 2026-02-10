@@ -2,11 +2,9 @@ import LambdaLib.qterm
 import LambdaLib.unification
 import Mathlib.Tactic
 
-open QuotTerm
 
--- the idea in this file is to implement programming by typed pattern matching
--- in the rocq version, this ran into transports getting stuck
--- probably lean's proof-irrelevant prop won't help much, but it might help a little.
+
+open QuotTerm
 
 namespace S
 abbrev pair := <λ t1 t2 p. p t1 t2>
@@ -62,29 +60,30 @@ macro "mega_lambda_solve" : tactic => `(tactic|
 -- macro "{" t:term:10 "}" : term => `(mycast $t ?_)
 macro "{" t:term:10 "}" : term => `(mycast $t ?_)
 
+-- (λ (T : Type). λ (t : T). t) Type Type
 example : Typed S.nil S.U S.U := by
   eapply {Typed.app {Typed.app (.alambda .U (.alambda (.var {Var.zero}) (.var .zero))) .U} .U}
   --
-  -- mega_lambda_solve
+  mega_lambda_solve
   --
-  iterate 7 rotate_left
-  congr 1
-  lambda_solve
-  rotate_left
-  --
-  -- congr 1 <;> normalize
-  -- -- TODO: i need to fix lambda_solve pair case so that this next line WOULDN'T simplify this!!!
-  -- lambda_solve -- this shouldn't do the pair case, since its not vars!
-  --
-  rotate_right
-  -- OK, here we are
-  congr 1
-  --
-  --
-  lambda_solve <;> rfl
-  --
-  normalize
-  --
-  lambda_solve
-  -- mega_lambda_solve
-  --
+  -- iterate 7 rotate_left
+  -- congr 1
+  -- lambda_solve
+  -- rotate_left
+  -- --
+  -- -- congr 1 <;> normalize
+  -- -- -- TODO: i need to fix lambda_solve pair case so that this next line WOULDN'T simplify this!!!
+  -- -- lambda_solve -- this shouldn't do the pair case, since its not vars!
+  -- --
+  -- rotate_right
+  -- -- OK, here we are
+  -- congr 1
+  -- --
+  -- --
+  -- lambda_solve <;> rfl
+  -- --
+  -- normalize
+  -- --
+  -- lambda_solve
+  -- -- mega_lambda_solve
+  -- --

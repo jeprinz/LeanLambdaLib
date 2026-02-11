@@ -26,9 +26,11 @@ abbrev succ := <λ x env. x ({proj1} env)>
 
 abbrev pi := <λ x y env. Pi (x env) (λ a. y ({pair} env a))>
 abbrev U := <λ env. U>
+abbrev Id := <λ x y env. Id x y>
 
 abbrev lambda := <λ t env a. t ({pair} env a)>
 abbrev app := <λ t1 t2 env. (t1 env) (t2 env)>
+abbrev refl := <λ env. Refl>
 
 abbrev weaken := <λ t env. t ({proj1} env)>
 abbrev subLast := <λ t toSub env. t ({pair} env (toSub env))>
@@ -59,6 +61,11 @@ inductive Typed : QTerm → QTerm → QTerm → Type where
 | Pi : ∀{ctx A B}, Typed ctx S.U A
   → Typed <{S.cons} {ctx} {A}> S.U B
   → Typed ctx S.U <{S.pi} {A} {B}>
+| Id : ∀{ctx T s1 s2}, Typed ctx T s1
+  → Typed ctx T s2
+  → Typed ctx T <{S.Id} {s1} {s2}>
+| refl : ∀{ctx T s}, Typed ctx T s
+  → Typed ctx <{S.Id} {s} {s}> S.refl
 
 open Typed
 open Var
@@ -94,7 +101,8 @@ macro "mega_lambda_solve" : tactic => `(tactic|
             fail_if_no_progress lambda_solve | rfl)))
 
 -- def nat := ((by eapply U) : Typed S.nil S.U _)
-def nat := ann (Typed S.nil S.U _) (by
+-- we need nat to be in an arbitrary context because we use it in ch_plus later
+def nat {ctx : QTerm} := ann (Typed ctx S.U _) (by
   eapply (Pi U (Pi (.var {{Var.zero}})
     (Pi (Pi (.var {{Var.succ .zero}}) (.var {{Var.succ (.succ .zero)}}))
       (.var {{Var.succ (.succ .zero)}}))))
@@ -102,8 +110,12 @@ def nat := ann (Typed S.nil S.U _) (by
   --
 )
 
-def z := ann (Typed S.nil (of nat) _) (by
-  simp [of]
+example : True := by grind
+
+def Snat := of (nat (ctx := S.nil))
+
+def z := ann (Typed S.nil Snat _) (by
+  simp [Snat, of]
   eapply {{lambda (lambda (lambda (.var (.succ .zero))))}}
   mega_lambda_solve
   --
@@ -112,8 +124,8 @@ def z := ann (Typed S.nil (of nat) _) (by
 
 example : True := by grind
 
-def s := ann (Typed S.nil <{S.arrow} {of nat} {of nat}> _) (by
-  simp [of]
+def s {Γ} := ann (Typed Γ <{S.arrow} {Snat} {Snat}> _) (by
+  simp [Snat, of]
   normalize
   eapply {{Typed.lambda (lambda (lambda (lambda
     (Typed.app (.var {{Var.zero}})
@@ -124,3 +136,48 @@ def s := ann (Typed S.nil <{S.arrow} {of nat} {of nat}> _) (by
   mega_lambda_solve
   --
 )
+
+example : True := by grind
+
+def ch_one := ann (Typed S.nil Snat _) (by
+  eapply {{Typed.app {{s}} z}}
+  mega_lambda_solve
+  --
+)
+
+example : True := by grind
+
+def ch_two := ann (Typed S.nil Snat _) (by
+  eapply {{Typed.app {{s}} (.app {{s}} z)}}
+  any_goals (simp [Snat, of])
+  mega_lambda_solve
+  --
+)
+
+example : True := by grind
+
+def ch_plus := ann (Typed S.nil <{S.arrow} {Snat} ({S.arrow} {Snat} {Snat})> _) (by
+  eapply {{lambda (lambda
+    (.app {{Typed.app {{Typed.app {{Typed.var zero.succ}} nat}} {{Typed.var zero}}}} {{s}}))}}
+  any_goals (simp [Snat, of])
+  mega_lambda_solve
+  --
+)
+
+example : True := by grind
+
+-- def Sz := of (z (ctx := S.nil))
+-- def Ss := of (s (ctx := S.nil))
+
+def test0 := ann
+  (Typed S.nil <{S.Id} ({S.app} ({S.app} {of ch_plus} {of ch_one}) {of ch_one}) {of ch_two}> _) (by
+  simp [of]
+  -- normalize
+  --
+  eapply {{Typed.refl ch_two}}
+  -- any_goals simp [of]
+  mega_lambda_solve
+  --
+)
+
+example : True := by grind

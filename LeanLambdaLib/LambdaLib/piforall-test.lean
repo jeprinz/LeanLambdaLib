@@ -156,7 +156,7 @@ def ch_two := ann (Typed S.nil Snat _) (by
 
 example : True := by grind
 
-def ch_plus := ann (Typed S.nil <{S.arrow} {Snat} ({S.arrow} {Snat} {Snat})> _) (by
+def ch_plus {Γ} := ann (Typed Γ <{S.arrow} {Snat} ({S.arrow} {Snat} {Snat})> _) (by
   eapply {{lambda (lambda
     (.app {{Typed.app {{Typed.app {{Typed.var zero.succ}} nat}} {{Typed.var zero}}}} {{s}}))}}
   any_goals (simp [Snat, of])
@@ -164,19 +164,45 @@ def ch_plus := ann (Typed S.nil <{S.arrow} {Snat} ({S.arrow} {Snat} {Snat})> _) 
   --
 )
 
+def Sch_plus := of (ch_plus (Γ := S.nil))
+
 example : True := by grind
 
--- def Sz := of (z (ctx := S.nil))
--- def Ss := of (s (ctx := S.nil))
-
 def test0 := ann
-  (Typed S.nil <{S.Id} ({S.app} ({S.app} {of ch_plus} {of ch_one}) {of ch_one}) {of ch_two}> _) (by
-  simp [of]
+  (Typed S.nil <{S.Id} ({S.app} ({S.app} {Sch_plus} {of ch_one}) {of ch_one}) {of ch_two}> _) (by
+  simp [of, Sch_plus]
   -- normalize
   --
   eapply {{Typed.refl ch_two}}
   -- any_goals simp [of]
   mega_lambda_solve
+  --
+)
+
+example : True := by grind
+
+def Sz := of z
+def Ss := of (s (Γ := S.nil))
+
+def spec0 := ann
+  (Typed S.nil <{S.pi} {Snat} ({S.Id} ({S.app} ({S.app} {Sch_plus} {Sz}) {S.zero}) {S.zero})> _)
+  (by
+  simp [of, Sz, Sch_plus]
+  eapply {{lambda (.refl (.var zero))}}
+  mega_lambda_solve
+  --
+)
+
+example : True := by grind
+
+def spec1 := ann
+  (Typed S.nil <{S.pi} {Snat} ({S.pi} {Snat}
+    ({S.Id} ({S.app} ({S.app} {of ch_plus} ({S.app} {Ss} ({S.succ} {S.zero}))) {S.zero})
+            ({S.app} {Ss} ({S.app} ({S.app} {Sch_plus} ({S.succ} {S.zero})) {S.zero}))))> _) (by
+  eapply {{lambda (lambda (.refl (.app {{s}} (Typed.app {{Typed.app {{ch_plus}} (.var zero.succ)}} (.var zero)))))}}
+  any_goals (simp [of, Ss, Snat, Sch_plus])
+  mega_lambda_solve
+  exact <WHAT>
   --
 )
 

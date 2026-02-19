@@ -1,3 +1,6 @@
+import LambdaLib.qterm
+import LambdaLib.unification
+
 inductive ty : Type where
 | arrow : ty → ty → ty
 | base : ty
@@ -19,3 +22,15 @@ def prog : Deriv [] .base :=
 
 def prog2 : Deriv [] (.arrow (.arrow .base .base) (.arrow .base .base)) :=
   .lambda (.lambda (.app (.var (.succ .zero)) (.var .zero)))
+
+open QuotTerm
+
+abbrev two' : QTerm := <λ s z. s (s z)>
+
+example
+(t : QTerm)
+(H : <{two'} S Z> = <S {t}>)
+: t = <S Z>
+:= by
+  lambda_solve
+  --

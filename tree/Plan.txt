@@ -1,4 +1,0 @@
-I have formalized confluence for beta-eta reduction, but the proof has a lot of parts
-that are tedious and repetetive. So do my definitions.
-This makes it difficult to do the next step that I need to do.
-So, I will investigate a better organization by doing things over general trees in this folder.

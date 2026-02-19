@@ -1,5 +1,0 @@
-I plan on using tactics and metaprogramming to do higher order unification on lambda calculus
-terms for embeddings.
-
-In this folder, I want to test out the basic idea by doing unification through tactics for
-a simple ADT type.

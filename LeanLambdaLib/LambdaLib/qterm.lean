@@ -2,6 +2,9 @@ import LambdaLib.term
 import Qq
 import Lean
 
+-- this file defines quotiented lambda terms, over the normal ones from term.lean
+-- it also defines some fancy syntax
+
 open Lean hiding Term
 open Elab Meta Term Meta Command Qq Match PrettyPrinter Delaborator SubExpr
 

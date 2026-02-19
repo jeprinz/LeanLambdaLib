@@ -1,6 +1,8 @@
 import LambdaLib.qterm
 import LambdaLib.unification
 
+-- some examples used in the intro and section 2
+
 inductive ty : Type where
 | arrow : ty → ty → ty
 | base : ty

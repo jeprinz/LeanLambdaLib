@@ -1,5 +1,7 @@
 import LambdaLib.qterm
 
+-- this file proves some facts about lambda terms that are used by the unification procedure
+
 open QuotTerm
 
 theorem lam_body_rw {t1 t2 s1 s2} : (lam s1 t1 = lam s2 t2) = (t1 = t2) := by
@@ -330,13 +332,6 @@ theorem eta_contract s t (H : iFree 0 t) : lam s (app t (var 0)) = subst 0 <Dumm
 
 --------------------------------------
 
--- need to generalize this
-theorem special_case_0 t1 t2 (ifree : iFree 0 t1) (H : app t1 (var 0) = t2)
-  : subst 0 <Dummy> t1 = lam "x" t2 := by
-  subst t2
-  rw [eta_contract]
-  assumption
-
 theorem special_case i t1 t2 (ifree : iFree i t1) (H : app t1 (var i) = t2)
   : subst i <Dummy> t1 = lam "x" (subst i.succ (var 0) (lift 0 t2)) := by
   subst t2
@@ -357,7 +352,6 @@ theorem special_case i t1 t2 (ifree : iFree i t1) (H : app t1 (var i) = t2)
     repeat rw [QuotTerm.subst_lift]
     constructor
 
--- then the idea would be special_case_rw : (t1 x = t2) = (t1 = λ x. t2)
 theorem special_case_rw i t1 t2 (ifree : iFree i t1)
   : (app t1 (var i) = t2) =
     (subst i <Dummy> t1 = lam "x" (subst i.succ (var 0) (lift 0 t2))) := by
@@ -377,26 +371,10 @@ theorem special_case_rw i t1 t2 (ifree : iFree i t1)
     simp [subst_var]
     rw [<- QuotTerm.subst_lift_2]
 
--- <(λ p. {x'} (p (λ x y. x)) (p (λ x y. y))) (λ p. p {a} {b})> = c
--- theorem pair_specialize_case
---   (x' a b c sp2 /-sp1 sx1 sy1 sx2 sy2-/ i)
---   (H :
---     app (liftMulti i <λ p. {x'} (p (λ x y. x)) (p (λ x y. y))>)
---     (lam sp2 (app (app (var 0) a) b))
---     = c)
---   : app (liftMulti i <λ p. {x'} (p (λ x y. x)) (p (λ x y. y))>)
---     (lam sp2 (app (app (var 0) a) b))
---     = c
---     := by assumption
-
---------------------------------------
--- TODO: probably delete this substMulti stuff later if i don't end up using it.
-
 def substMulti (i : Nat) (ts : List QTerm) (t : QTerm) : QTerm :=
   match ts with
   | [] => t
   | t1 :: ts' => substMulti i ts' (subst i (liftMulti i t1) t)
-  -- an alternate idea is to do the lifts on the ts in the substMultiLam rewrite?
 
 theorem substMultiConst i ts c : substMulti i ts (const c) = const c := by
   induction ts with
@@ -433,30 +411,3 @@ theorem substMultiLam i ts s t : substMulti i ts (lam s t) = lam s (substMulti i
 theorem substMultiVar_rw i t1 x ts
   : substMulti i (t1 :: ts) (var x) = substMulti i ts (subst i (liftMulti i t1) (var x)) :=
   by apply substMultiSubst
-
--- theorem substSubstMulti env t t'
---   : (subst 0 t' (substMulti 1 env t)) = substMulti 0 env (subst 0 t' t) := by
---   induction env generalizing t with
---   | nil => rfl
---   | cons head tail ih =>
---     simp [substMulti]
---     rw [ih]
---     simp [<- QuotTerm.liftLiftMulti, liftMultiZero]
---     simp [QuotTerm.subst_subst]
---     --
---     sorry
-
--- theorem substSubstMulti env i t t'
---   : (subst i t' (substMulti i.succ env t)) = substMulti i env (subst i t' t) := by
---   induction env generalizing t with
---   | nil => rfl
---   | cons head tail ih =>
---     --
---     --
---     simp [substMulti]
---     rw [ih]
---     --
---     simp [QuotTerm.subst_subst]
---     --
---     simp [QuotTerm.substLiftMulti]
---     --

@@ -7,6 +7,8 @@ import Mathlib.Tactic
 -- i can't typecheck the scott definitions without adding general recursion
 -- to the embedding
 
+-- this file takes a very long time to typecheck
+
 
 open QuotTerm
 
@@ -14,7 +16,6 @@ namespace S
 abbrev pair := <λ t1 t2 p. p t1 t2>
 abbrev proj1 := <λ p. p (λ x y. x)>
 abbrev proj2 := <λ p. p (λ x y. y)>
--- TODO: i can make syntax for pair with a macro, which will run before the elaborator!
 
 -- contexts
 abbrev nil := <Nil>
@@ -90,17 +91,10 @@ macro "{{" t:term:10 "}}" : term => `(mycast $t ?_)
 def ann.{u} (T : Type u) (t : T) := t
 def of {ctx T t} (_ : Typed ctx T t) : QTerm := t
 
--- there were problems with (congr 1) doing stuff to equations
--- on lambda terms where it assumes nonsense. we want to only do congruence when
--- Typed or Var are equal.
--- macro "mega_lambda_solve" : tactic => `(tactic|
---   repeat (any_goals (first | apply And.intro |
---             fail_if_no_progress lambda_solve | rfl | congr 1)))
 macro "mega_lambda_solve" : tactic => `(tactic|
   repeat (any_goals (first | apply And.intro | apply congrTyped | apply congrVar |
             fail_if_no_progress lambda_solve | rfl)))
 
--- def nat := ((by eapply U) : Typed S.nil S.U _)
 -- we need nat to be in an arbitrary context because we use it in ch_plus later
 def nat {ctx : QTerm} := ann (Typed ctx S.U _) (by
   eapply (Pi U (Pi (.var {{Var.zero}})
@@ -110,8 +104,6 @@ def nat {ctx : QTerm} := ann (Typed ctx S.U _) (by
   --
 )
 
-example : True := by grind
-
 def Snat := of (nat (ctx := S.nil))
 
 def z := ann (Typed S.nil Snat _) (by
@@ -120,9 +112,6 @@ def z := ann (Typed S.nil Snat _) (by
   mega_lambda_solve
   --
 )
-
-
-example : True := by grind
 
 def s {Γ} := ann (Typed Γ <{S.arrow} {Snat} {Snat}> _) (by
   simp [Snat, of]
@@ -137,15 +126,11 @@ def s {Γ} := ann (Typed Γ <{S.arrow} {Snat} {Snat}> _) (by
   --
 )
 
-example : True := by grind
-
 def ch_one := ann (Typed S.nil Snat _) (by
   eapply {{Typed.app {{s}} z}}
   mega_lambda_solve
   --
 )
-
-example : True := by grind
 
 def ch_two := ann (Typed S.nil Snat _) (by
   eapply {{Typed.app {{s}} (.app {{s}} z)}}
@@ -153,8 +138,6 @@ def ch_two := ann (Typed S.nil Snat _) (by
   mega_lambda_solve
   --
 )
-
-example : True := by grind
 
 def ch_plus {Γ} := ann (Typed Γ <{S.arrow} {Snat} ({S.arrow} {Snat} {Snat})> _) (by
   eapply {{lambda (lambda
@@ -166,8 +149,6 @@ def ch_plus {Γ} := ann (Typed Γ <{S.arrow} {Snat} ({S.arrow} {Snat} {Snat})> _
 
 def Sch_plus := of (ch_plus (Γ := S.nil))
 
-example : True := by grind
-
 def test0 := ann
   (Typed S.nil <{S.Id} ({S.app} ({S.app} {Sch_plus} {of ch_one}) {of ch_one}) {of ch_two}> _) (by
   simp [of, Sch_plus]
@@ -178,8 +159,6 @@ def test0 := ann
   mega_lambda_solve
   --
 )
-
-example : True := by grind
 
 def Sz := of z
 def Ss := of (s (Γ := S.nil))
@@ -193,8 +172,6 @@ def spec0 := ann
   --
 )
 
-example : True := by grind
-
 def spec1 := ann
   (Typed S.nil <{S.pi} {Snat} ({S.pi} {Snat}
     ({S.Id} ({S.app} ({S.app} {of ch_plus} ({S.app} {Ss} ({S.succ} {S.zero}))) {S.zero})
@@ -202,8 +179,6 @@ def spec1 := ann
   eapply {{lambda (lambda (.refl (.app {{s}} (Typed.app {{Typed.app {{ch_plus}} (.var zero.succ)}} (.var zero)))))}}
   any_goals (simp [of, Ss, Snat, Sch_plus])
   mega_lambda_solve
-  exact <WHAT>
+  exact <Dummy>
   --
 )
-
-example : True := by grind

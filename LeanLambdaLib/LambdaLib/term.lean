@@ -2,7 +2,6 @@
 -- i very roughly followed Nipkow (2001), although i did many parts differently
 
 import Mathlib.Tactic.ApplyFun
--- import Mathlib.Tactic.LinArith
 
 namespace SynTerm
 
@@ -20,7 +19,6 @@ open Term
 
 def lift (k : Nat) (t : Term) : Term :=
   match t with
-  -- | var i => if i >= k then Term.var (Nat.succ i) else Term.var i
   | var i => Term.var (if i >= k then Nat.succ i else i)
   | const c => const c
   | lam s t => lam s (lift (Nat.succ k) t)

@@ -10,7 +10,6 @@ namespace S
 abbrev pair := <λ t1 t2 p. p t1 t2>
 abbrev proj1 := <λ p. p (λ x y. x)>
 abbrev proj2 := <λ p. p (λ x y. y)>
--- TODO: i can make syntax for pair with a macro, which will run before the elaborator!
 
 -- contexts
 abbrev nil := <Nil>
@@ -209,7 +208,6 @@ theorem fundamental_lemma {ctx T lvl t env}
     cases Ins <;> lambda_solve
     exists s
 
--- can i use the lambda functions to encode the logical predicate?
 theorem consistency {lvl val} : Typed S.nil lvl S.Empty val → False := by
   intros t
   rcases (fundamental_lemma t In_ctx.in_nil) with ⟨s, inS, sval⟩

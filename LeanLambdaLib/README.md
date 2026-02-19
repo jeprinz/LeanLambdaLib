@@ -1,13 +1,11 @@
-# LeanLambdaLibMathlib
+# QHOAS
 
-## GitHub configuration
+This is the code for the paper "Quotiented Higher Order Abstract Syntax (Functional Pearl)".
 
-To set up your new GitHub repository, follow these steps:
-
-* Under your repository name, click **Settings**.
-* In the **Actions** section of the sidebar, click "General".
-* Check the box **Allow GitHub Actions to create and approve pull requests**.
-* Click the **Pages** section of the settings sidebar.
-* In the **Source** dropdown menu, select "GitHub Actions".
-
-After following the steps above, you can remove this section from the README file.
+Mapping from paper sections to code files:
+Section 1 -> paperexamples.lean
+Section 2 -> paperexamples.lean and typechecking.lean
+Section 3 -> term.lean, qterm.lean, unificationFacts.lean, and unification.lean.
+    examples of unification being used are in unification_test_cases.lean
+Section 4 -> canonicity.lean
+Section 5 -> the further typechecking tests are in piforall-test.lean

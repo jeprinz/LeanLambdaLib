@@ -22,16 +22,13 @@ inductive Deriv : Γ → ty → Type where
 def prog : Deriv [] .base :=
   .app (.lambda (.var .zero)) .tt
 
-def prog2 : Deriv [] (.arrow (.arrow .base .base) (.arrow .base .base)) :=
-  .lambda (.lambda (.app (.var (.succ .zero)) (.var .zero)))
-
 open QuotTerm
 
-abbrev two' : QTerm := <λ s z. s (s z)>
+abbrev two : QTerm := <λ s z. s (s z)>
 
 example
 (t : QTerm)
-(H : <{two'} S Z> = <S {t}>)
+(H : <{two} S Z> = <S {t}>)
 : t = <S Z>
 := by
   lambda_solve

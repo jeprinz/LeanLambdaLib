@@ -1,1 +1,3 @@
-import LambdaLib.Basic
+-- import LambdaLib.Basic
+
+example : True := by grind

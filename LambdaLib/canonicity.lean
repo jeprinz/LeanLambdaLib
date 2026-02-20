@@ -1,6 +1,6 @@
 import LambdaLib.qterm
 import LambdaLib.unification
--- import Mathlib.Tactic
+import Init.RCases
 
 open QuotTerm
 

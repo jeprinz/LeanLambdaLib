@@ -1,6 +1,5 @@
 import LambdaLib.qterm
 import LambdaLib.unification
-import Mathlib.Tactic
 
 -- this is testing that i can typecheck the church definitions from
 -- https://github.com/sweirich/pi-forall/blob/2023/version3/test/NatChurch.pi

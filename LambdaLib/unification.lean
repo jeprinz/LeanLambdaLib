@@ -1,22 +1,28 @@
-import Qq
 import Lean
 
 
 import LambdaLib.qterm
 import LambdaLib.unificationFacts
-import Mathlib.Tactic
+-- import Mathlib.Tactic.failIfNoProgress
+-- import Mathlib.Tactic.CasesM
+-- import Mathlib.Tactic
+import Mathlib.Tactic.CasesM
+import Mathlib.Data.Nat.Cast.Order.Basic
+import Mathlib.Algebra.Order.Sub.Basic
+import Mathlib.Algebra.Order.ZeroLEOne
+import Mathlib.Algebra.NeZero
+import Init.Data.Nat.Basic
+import Lean.Meta.Tactic.Simp.BuiltinSimprocs.Nat
+import Lean.Meta.Tactic.Simp.BuiltinSimprocs.Core
+import Mathlib.Algebra.Order.GroupWithZero.Canonical
 
 open QuotTerm
 
 /-
-in this file, i'll define the actual unification tactic
-TODO: make an inductive predicate for z-free (generalize to nth-var-free), and use it
-as an assumption for eta rule as well as a
-zfree t1 → (t1 x = t2) = (t1 = λ x. t2)  rewrite rule.
-this will work with the repeat constructor dispatch.
+the higher order unification tactic
+it mostly rerwites by theorems from unificationFacts.lean.
+there are also some other cases needed.
 -/
-
--- TODO: is there an idiomatic way to do the dispatches with typeclasses instead?
 
 macro "normalize" : tactic => `(tactic|
   simp only [
@@ -25,12 +31,11 @@ macro "normalize" : tactic => `(tactic|
     liftLiftMulti, substLiftMulti, liftMultiZero,
     liftMulti_lam_rw, liftMulti_app_rw, liftMulti_var_rw, liftMulti_const_rw,
     liftMultiLiftMulti,
-    liftZeroToLiftMulti, -- is this good?
+    liftZeroToLiftMulti,
     beta,
     --
     substMulti, substMultiConst, substMultiEmpty, substMultiApp, substMultiLam,
-    substMultiVar_rw, -- substMulti new ones
-    -- eta_contract,
+    substMultiVar_rw,
     --
     --
     Nat.one_lt_ofNat,   zero_lt_one, tsub_self, one_ne_zero,
@@ -39,7 +44,6 @@ macro "normalize" : tactic => `(tactic|
     nonpos_iff_eq_zero, OfNat.ofNat_ne_zero, not_lt_zero', Nat.not_ofNat_le_one,
     Nat.reduceLeDiff, Nat.reduceLT, zero_le, Nat.pred_eq_sub_one, Nat.add_one_sub_one
   ] at *
-    -- | simp (disch := repeat constructor) only [eta_contract] at *
 )
 
 open Lean hiding Term
@@ -55,7 +59,7 @@ partial def is_pattern (e : Expr) (seenpair : Bool) : MetaM Bool := do
     => do let x <- is_pattern a true
           let y <- is_pattern b true
           return x && y
-  -- TODO: should also check that indices are unique
+  -- ideally should also check that indices are unique
   | Expr.app (Expr.const `QuotTerm.var _) _index => return seenpair
   | _ => return false
 
@@ -65,14 +69,8 @@ abbrev val_to_sub (fresh_mv : QTerm) : QTerm :=
 elab "do_pair_case" : tactic =>
   Lean.Elab.Tactic.withMainContext do
     let goal ← Lean.Elab.Tactic.getMainGoal
-    -- let goalDecl ← goal.getDecl
-    -- let goalType := goalDecl.type
     let goalType ← Lean.Elab.Tactic.getMainTarget
-    -- should match on the goal to check that its in the right form with a metavar in the
-    -- right place, and if so substitute it (either directly or by applying that theorem)
-    -- or if not, it should fail so that the repeat its in knows that its done.
     match goalType with
-    -- TODO: i should probably support the opposite ordering here as well
     | Expr.app (Expr.app (Expr.app (Expr.const `Eq _) _)
         (Expr.app (Expr.app (Expr.const `QuotTerm.app _)
           (Expr.app (Expr.app (Expr.const `QuotTerm.liftMulti _) _) (Expr.mvar mvid)))
@@ -88,14 +86,13 @@ elab "do_pair_case" : tactic =>
 
 macro "lambda_solve" : tactic => `(tactic|
   repeat ( first
-    | fail_if_no_progress subst_vars -- TODO: maybe only have this go on equations of type QTerm
+    | fail_if_no_progress subst_vars -- ideally should only go on equations of type QTerm
     | casesm* _ ∧ _
     | casesm* QTerm × QTerm
     | simp only [*, and_self, and_true, true_and,
-      and_false, false_and] -- TODO: maybe i can use the `contextual' flag instead
+      and_false, false_and]
     | simp (disch := (repeat' constructor) <;> grind only) only
       [eta_contract] at *
-      -- [eta_contract, special_case_rw] at *
     | normalize
     | simp only [
       lam_body_rw, -- i checked, apparently this one is not needed in the canonicity proof
@@ -105,14 +102,13 @@ macro "lambda_solve" : tactic => `(tactic|
       app_ne_const_rw2, app_ne_var_rw2] at *
     | do_pair_case
     | apply Eq.symm; do_pair_case
-    -- NOTE: these next two lines should be redundant to the call with simp above IF LEAN
-    -- WASN'T STUPID. however, disch doesn't work when the goal being dispatched to
+    -- NOTE: these next three cases should be redundant to the call with simp above if simp
+    -- worked the way it should. however, disch doesn't work when the goal being dispatched to
     -- has metavariables in it.
     | (rw [special_case_rw] at *
       ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)) <;> [skip]
     | (apply Eq.symm; rw [special_case_rw] at *
       ; on_goal 2 => ((repeat' constructor) <;> grind only <;> fail)) <;> [skip]
-    -- again, this should be redundant except for the bug with disch and metavars
     | (rw [app_fact_rw] at *
       ; (iterate 2 on_goal 2 => ((repeat constructor) <;> fail))) <;> [skip]
   )

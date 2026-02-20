@@ -1,5 +1,4 @@
 import LambdaLib.term
-import Qq
 import Lean
 
 -- this file defines quotiented lambda terms, over the normal ones from term.lean
@@ -392,13 +391,12 @@ def elabTerm : TermElab := fun stx _typ? => do
 
 def test_term := <λ x. A x x>
 
-#check (<λ x. A>) = (<λ x y z. (x y z q r s)>)
-#check (<λ x y. {test_term}>) = (<λ x y z. (x y)>)
-#check < λ x y . A B >
-#check < λ x y . x y >
--- #check <λ n. λ s z. s (n s z)>
-#check <λ x. λ y. x y>
-#check <A B>
+-- #check (<λ x. A>) = (<λ x y z. (x y z q r s)>)
+-- #check (<λ x y. {test_term}>) = (<λ x y z. (x y)>)
+-- #check < λ x y . A B >
+-- #check < λ x y . x y >
+-- #check <λ x. λ y. x y>
+-- #check <A B>
 
 partial def ppTermImpl (firstCall : Bool) (t : Expr) (varnames : List String) : Delab := do
   match t with
@@ -478,19 +476,17 @@ def delabVar : Delab := do
   let e <- getExpr
   ppTermImpl true e []
 
-#check OfNat.ofNat
--- set_option pp.rawOnError true
-#check <λ x y. {test_term}>
-#check <λ x. A> = <λ x y z. (x y)>
-#check <A B>
-#check <A>
-#check <(A B) (C (λ x. x))>
-#check <λ x . A>
-#check <λ x . x>
-#check <λ x y . x y>
-#check <(A)(B)>
-#check <(A B)(B)>
-#check (app test_term <B>)
--- def something := <λ x y. { _ }>
+-- #check OfNat.ofNat
+-- #check <λ x y. {test_term}>
+-- #check <λ x. A> = <λ x y z. (x y)>
+-- #check <A B>
+-- #check <A>
+-- #check <(A B) (C (λ x. x))>
+-- #check <λ x . A>
+-- #check <λ x . x>
+-- #check <λ x y . x y>
+-- #check <(A)(B)>
+-- #check <(A B)(B)>
+-- #check (app test_term <B>)
 
 end QuotTerm

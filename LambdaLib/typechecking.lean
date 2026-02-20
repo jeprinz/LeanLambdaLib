@@ -1,6 +1,6 @@
 import LambdaLib.qterm
 import LambdaLib.unification
-import Mathlib.Tactic
+-- import Mathlib.Tactic.failIfNoProgress
 
 
 
@@ -62,3 +62,4 @@ macro "{" t:term:10 "}" : term => `(mycast $t ?_)
 example : Typed S.nil S.U S.U := by
   eapply {Typed.app {Typed.app (.alambda .U (.alambda (.var {Var.zero}) (.var .zero))) .U} .U}
   mega_lambda_solve
+  --

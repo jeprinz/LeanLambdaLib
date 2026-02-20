@@ -37,6 +37,7 @@ abbrev four := <{succ} ({succ} {two})>
 
 example : <{plus} {zero} {zero}> = zero := by
   lambda_solve
+  --
 
 example : <{plus} {one} {one}> = two := by
   unfold plus one two succ zero

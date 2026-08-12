@@ -4,13 +4,16 @@ import Lean
 -- this file defines quotiented lambda terms, over the normal ones from term.lean
 -- it also defines some fancy syntax
 
+import Mathlib.Data.Quot
+import Qq
+
 open Lean hiding Term
 open Elab Meta Term Meta Command Qq Match PrettyPrinter Delaborator SubExpr
 
 namespace QuotTerm
 open SynTerm
 
-instance Term.equivalence : Equivalence equiv where
+theorem Term.equivalence : Equivalence equiv :={
   refl := by
     intros t
     exists t
@@ -27,6 +30,7 @@ instance Term.equivalence : Equivalence equiv where
     rcases e2 with ⟨t2, r3, r4⟩
     have ⟨t, r5, r6⟩ := confluence r2 r3
     exact ⟨t, transitivity r1 r5, transitivity r4 r6⟩
+}
 
 instance Term.setoid : Setoid Term where
   r := equiv
@@ -119,23 +123,24 @@ def liftMulti (i : Nat) (t : QTerm) : QTerm :=
 ---- equations over quotiented terms ----------------------------------------
 -----------------------------------------------------------------------------
 
+-- locally access the definitions. TODO: use the module system
+unseal subst lift liftMulti const var app lam
+
 theorem lift_app {i t1 t2}
   : lift i (app t1 t2) = app (lift i t1) (lift i t2) := by
   apply Quotient.ind _ t1
   apply Quotient.ind _ t2
   intros
-  simp [lift, app, SynTerm.lift]
+  cbv
 
 theorem lift_lam {i s t} : lift i (lam s t) = lam s (lift (Nat.succ i) t) := by
   apply Quotient.ind _ t
   intros
-  simp [lift, lam, SynTerm.lift]
+  cbv
 
-theorem lift_var {k i} : lift k (var i) = var (if i >= k then Nat.succ i else i) := by
-  simp [lift, var, SynTerm.lift]
+theorem lift_var {k i} : lift k (var i) = var (if i >= k then Nat.succ i else i) := by cbv
 
-theorem lift_const {k c} : lift k (const c) = const c := by
-  simp [lift, const, SynTerm.lift]
+theorem lift_const {k c} : lift k (const c) = const c := by cbv
 
 theorem subst_app {i t t1 t2}
   : subst i t (app t1 t2) = app (subst i t t1) (subst i t t2) := by
@@ -143,20 +148,20 @@ theorem subst_app {i t t1 t2}
   apply Quotient.ind _ t1
   apply Quotient.ind _ t2
   intros
-  simp [subst, app, SynTerm.subst]
+  cbv
 
 theorem subst_lam {i s t t1} : subst i t (lam s t1) = lam s (subst (Nat.succ i) (lift 0 t) t1) := by
   apply Quotient.ind _ t
   apply Quotient.ind _ t1
   intros
-  simp [subst, lift, lam, SynTerm.subst]
+  cbv
 
 theorem subst_var {k i t} : subst k t (var i)
   = if k < i then var (Nat.pred i) else if i == k then t else var i := by
   apply Quotient.ind _ t
   intros
   simp [subst, var, SynTerm.subst]
-  repeat' (first | split | trivial)
+  grind
 
 theorem subst_subst (i1 i2 : Nat) (t1 t2 t : QTerm) (H : i1 >= i2) :
     subst i1 t1 (subst i2 t2 t) =
@@ -213,6 +218,7 @@ theorem substLiftMulti (n i : Nat) (t1 t2 : QTerm) (H : i < n)
 theorem subst_const {k t c} : subst k t (const c) = const c := by
   apply Quotient.ind _ t
   simp [subst, const, SynTerm.subst]
+  grind
 
 theorem liftMultiZero (t : QTerm) : liftMulti 0 t = t := by
   apply Quotient.ind _ t
@@ -287,7 +293,6 @@ theorem var_not_const {i c} (H : var i = const c) : False := by
 theorem lam_body {t1 t2 s1 s2} (H : lam s1 t1 = lam s2 t2) : t1 = t2 := by
   have H := congrArg (lift 0) H
   have H := congrArg (fun t => app t (var 0)) H
-  simp at H
   simp [lift_lam, beta] at H
   revert H
   apply Quotient.ind _ t1
@@ -311,6 +316,7 @@ theorem subst_lift (i : Nat) (t1 t2 : QTerm) : subst i t1 (lift i t2) = t2 := by
   intros
   simp [subst, lift]
   simp [SynTerm.subst_lift]
+  rfl
 
 theorem lift_subst (i1 i2 : Nat) (t1 t : QTerm) :
     lift i1 (subst i2 t1 t) =

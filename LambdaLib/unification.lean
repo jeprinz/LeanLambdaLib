@@ -41,7 +41,7 @@ macro "normalize" : tactic => `(tactic|
     Nat.one_lt_ofNat,   zero_lt_one, tsub_self, one_ne_zero,
     Nat.succ_eq_add_one, zero_add, Nat.reduceAdd, Nat.not_ofNat_lt_one, ↓reduceIte,
     Nat.reduceBEq, Bool.false_eq_true, lt_self_iff_false, BEq.rfl, ge_iff_le,
-    nonpos_iff_eq_zero, OfNat.ofNat_ne_zero, not_lt_zero', Nat.not_ofNat_le_one,
+    nonpos_iff_eq_zero, OfNat.ofNat_ne_zero, not_lt_zero, Nat.not_ofNat_le_one,
     Nat.reduceLeDiff, Nat.reduceLT, zero_le, Nat.pred_eq_sub_one, Nat.add_one_sub_one
   ] at *
 )

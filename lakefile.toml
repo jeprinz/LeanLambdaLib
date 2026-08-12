@@ -4,11 +4,11 @@ keywords = ["math"]
 defaultTargets = ["LambdaLib"]
 
 [leanOptions]
-pp.unicode.fun = true # pretty-prints `fun a ↦ b`
-relaxedAutoImplicit = false
-weak.linter.mathlibStandardSet = true
-maxSynthPendingDepth = 3
-experimental.module = true
+# pp.unicode.fun = true # pretty-prints `fun a ↦ b`
+# relaxedAutoImplicit = false
+# weak.linter.mathlibStandardSet = true
+# maxSynthPendingDepth = 3
+# experimental.module = true
 
 [[require]]
 name = "mathlib"

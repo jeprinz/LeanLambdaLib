@@ -1,8 +1,6 @@
 -- this file is a proof of confluence of lambda-beta-eta
 -- i very roughly followed Nipkow (2001), although i did many parts differently
 
-import Mathlib.Tactic.ApplyFun
-
 namespace SynTerm
 
 inductive Constant
@@ -57,20 +55,21 @@ theorem lift_lift (i1 i2 : Nat) (t : Term) (H : i2 < i1) :
   induction t with
   | var i =>
     intros
-    repeat (first | simp [lift] | split | cutsat)
+    repeat (first | simp [lift] | split | lia)
   | const c =>
     intros
     simp [lift]
   | lam s t ih =>
     intros
     simp [lift]
-    rw [ih] <;> try cutsat
-    repeat (first | simp | split | cutsat | contradiction)
+    rw [ih] <;> try lia
+    repeat (first | simp | split | lia | contradiction)
+    grind
   | app t1 t2 ih1 ih2 =>
     intros
     simp [lift]
     rw [ih1, ih2]
-    repeat (first | simp | split | cutsat | contradiction)
+    repeat (first | simp | split | lia | contradiction)
 
 theorem lift_subst (i1 i2 : Nat) (t1 t : Term) :
     lift i1 (subst i2 t1 t) =
@@ -81,7 +80,7 @@ theorem lift_subst (i1 i2 : Nat) (t1 t : Term) :
   induction t with
   | var i =>
     intros
-    repeat (first | simp [subst, lift] | split | cutsat | contradiction)
+    repeat (first | simp [subst, lift] | split | lia | contradiction)
   | const c =>
     intros
     simp [subst, lift]
@@ -91,19 +90,19 @@ theorem lift_subst (i1 i2 : Nat) (t1 t : Term) :
     rw [ih]
     simp
     rw [lift_lift]
-    repeat (first | simp | split | cutsat | contradiction)
+    repeat (first | simp | split | lia | contradiction)
   | app t1 t2 ih1 ih2 =>
     intros
     simp [subst, lift]
     rw [ih1, ih2]
-    repeat (first | simp | split | cutsat | contradiction)
+    repeat (first | simp | split | lia | contradiction)
 
 theorem subst_lift (i : Nat) (t1 t2 : Term) : subst i t1 (lift i t2) = t2 := by
   revert i t1
   induction t2 with
   | var i =>
     intros
-    repeat (first | simp [subst, lift] | split | cutsat | contradiction)
+    repeat (first | simp [subst, lift] | split | lia | contradiction)
   | const c =>
     intros
     simp [subst, lift]
@@ -115,7 +114,7 @@ theorem subst_lift (i : Nat) (t1 t2 : Term) : subst i t1 (lift i t2) = t2 := by
     intros
     simp [subst, lift]
     rw [ih1, ih2]
-    repeat (first | simp | split | cutsat | contradiction)
+    repeat (first | simp | split | lia | contradiction)
 
 theorem subst_lift_off_by_1 (i1 i2 : Nat) (t1 t : Term) (H : i1 = i2 + 1) :
     subst i1 t1 (lift i2 t) = subst i2 t1 (lift i1 t) := by
@@ -123,7 +122,7 @@ theorem subst_lift_off_by_1 (i1 i2 : Nat) (t1 t : Term) (H : i1 = i2 + 1) :
   induction t with
   | var i =>
     intros
-    repeat (first | simp [subst, lift] | split | cutsat | contradiction)
+    repeat (first | simp [subst, lift] | split | lia | contradiction)
   | const c =>
     intros
     simp [subst, lift]
@@ -131,12 +130,12 @@ theorem subst_lift_off_by_1 (i1 i2 : Nat) (t1 t : Term) (H : i1 = i2 + 1) :
     intros
     simp [subst, lift]
     rw [ih]
-    cutsat
+    lia
   | app t1 t2 ih1 ih2 =>
     intros
     simp [subst, lift]
     rw [ih1, ih2]
-    repeat (first | simp | split | cutsat | contradiction)
+    repeat (first | simp | split | lia | contradiction)
 
 
 theorem subst_subst (i1 i2 : Nat) (t1 t2 t : Term) (H : i1 >= i2) :
@@ -146,24 +145,24 @@ theorem subst_subst (i1 i2 : Nat) (t1 t2 t : Term) (H : i1 >= i2) :
   induction t with
   | var i =>
     intros
-    repeat' (first | simp [subst] | split | cutsat | contradiction | rw [subst_lift])
+    repeat' (first | simp [subst] | split | lia | contradiction | rw [subst_lift])
   | const c =>
     intros
     simp [subst]
   | lam s t ih =>
     intros
     simp [subst]
-    rw [ih] <;> try cutsat
+    rw [ih] <;> try lia
     simp
-    rw [lift_lift] <;> try cutsat
+    rw [lift_lift] <;> try lia
     rw [lift_subst]
-    repeat' (first | simp | split | cutsat )
-    rewrite [subst_lift_off_by_1] <;> cutsat
+    repeat' (first | simp | split | lia )
+    rewrite [subst_lift_off_by_1] <;> grind
   | app t1 t2 ih1 ih2 =>
     intros
     simp [subst]
     rw [ih1, ih2]
-    repeat (first | simp | split | cutsat | contradiction)
+    repeat (first | simp | split | lia | contradiction)
 
 theorem lift_injective {i : Nat} {M N : Term} (H : lift i M = lift i N) : M = N := by
   revert i N H
@@ -172,7 +171,7 @@ theorem lift_injective {i : Nat} {M N : Term} (H : lift i M = lift i N) : M = N 
     intros i N H
     cases N <;> try contradiction
     simp [lift] at H
-    repeat' (first | split at H | cutsat)
+    repeat' (first | split at H | lia)
   | const c =>
     intros i N H
     cases N <;> try contradiction
@@ -201,7 +200,7 @@ theorem subst_lift_2 (i : Nat) {t : Term} :
   | var i =>
     intros i
     simp [subst, lift]
-    repeat' (first | split | cutsat )
+    repeat' (first | split | lia )
   | const c =>
     intros i
     rfl
@@ -223,24 +222,25 @@ theorem subst_subst_2 (i1 i2 : Nat) (t1 t2 t : Term) (H : i1 < i2) :
   induction t with
   | var i =>
     intros
-    repeat' (first | simp [subst] | split | cutsat | contradiction | rw [subst_lift])
+    repeat' (first | simp [subst] | split | lia | contradiction | rw [subst_lift])
   | const c =>
     intros
     simp [subst]
   | lam s t ih =>
     intros
     simp [subst]
-    rw [ih] <;> try cutsat
+    rw [ih] <;> try lia
     simp
-    rw [lift_lift] <;> try cutsat
+    rw [lift_lift] <;> try lia
     rw [lift_subst]
-    repeat' (first | simp | split | cutsat )
-    rewrite [subst_lift_off_by_1] <;> cutsat
+    repeat' (first | simp | split | lia )
+    grind
+    rewrite [subst_lift_off_by_1] <;> grind
   | app t1 t2 ih1 ih2 =>
     intros
     simp [subst]
     rw [ih1, ih2]
-    repeat (first | simp | split | cutsat | contradiction)
+    repeat (first | simp | split | lia | contradiction)
 
 --------------------------------------------------------------------------------
 ---------- A proof of confluence for beta alone without eta -------------------
@@ -299,7 +299,7 @@ theorem parSubst {i} {N N'} {M M' : Term}
     simp [subst]; apply (Par.papp (ih1 pNN') (ih2 pNN'))
   | @pbeta s a a' b b' _p1 _p2 ih1 ih2 =>
     intros i N N' pNN'
-    rw [subst_subst] <;> try cutsat
+    rw [subst_subst] <;> try lia
     simp [subst]
     apply Par.pbeta
     · apply (ih1 (parLift pNN'))
@@ -343,7 +343,7 @@ inductive Proof (P : Prop) : Type
 def closeRef {A} (R : Relation A) : Relation A :=
   fun x y => x = y ∨ R x y
 
-def liftRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
+theorem liftRef {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
   (ctr : ∀ {x y}, R x y → R' (f x) (f y))
   : closeRef R x y → closeRef R' (f x) (f y) :=
   fun s => match s with
@@ -355,30 +355,30 @@ inductive closure {A} (R : Relation A) : A → A → Prop
 | refl : ∀{a : A}, closure R a a
 | cons : ∀{x y : A}, R x y → closure R y z  → closure R x z
 
-def oneStep {A} {R : Relation A} {x y : A} (step : R x y)
+theorem oneStep {A} {R : Relation A} {x y : A} (step : R x y)
   : closure R x y := closure.cons step closure.refl
 
-def transitivity {A} {R : Relation A} {x y z : A}
+theorem transitivity {A} {R : Relation A} {x y z : A}
   (step1 : closure R x y) (step2 : closure R y z)
   : closure R x z :=
   match step1 with
   | closure.refl => step2
   | closure.cons s ss => closure.cons s (transitivity ss step2)
 
-def closureClosure {A} {R : Relation A} {x y : A} (H : closure (closure R) x y)
+theorem closureClosure {A} {R : Relation A} {x y : A} (H : closure (closure R) x y)
   : closure R x y :=
   match H with
   | .refl => closure.refl
   | .cons a b => transitivity a (closureClosure b)
 
-def liftCsr {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
+theorem liftCsr {A} {B} {R : Relation A} {R' : Relation B} {x y : A} (f : A → B)
   (ctr : ∀ {x y}, R x y → R' (f x) (f y))
   : closure R x y → closure R' (f x) (f y) :=
   fun s => match s with
   | closure.refl => closure.refl
   | closure.cons xy yz => closure.cons (ctr xy) (liftCsr f ctr yz)
 
-def liftCsr2 {A} {B} {R : Relation A} {R' : Relation B} {x y x' y' : A} (f : A → A → B)
+theorem liftCsr2 {A} {B} {R : Relation A} {R' : Relation B} {x y x' y' : A} (f : A → A → B)
   (ctr1 : ∀ {x x' y : A}, R x x' → R' (f x y) (f x' y))
   (ctr2 : ∀ {x y y' : A}, R y y' → R' (f x y) (f x y'))
   : closure R x x' → closure R y y' → closure R' (f x y) (f x' y') :=
@@ -391,7 +391,7 @@ inductive union {A} (R S : Relation A) : A → A → Prop
 | r : ∀{x y}, R x y → union R S x y
 | s : ∀{x y}, S x y → union R S x y
 
-def liftUnion {A} {B} {R S : Relation A} {R' S' : Relation B} {x y : A} (f : A → B)
+theorem liftUnion {A} {B} {R S : Relation A} {R' S' : Relation B} {x y : A} (f : A → B)
   (ctr1 : ∀ {x y}, R x y → R' (f x) (f y))
   (ctr2 : ∀ {x y}, S x y → S' (f x) (f y))
   : union R S x y → union R' S' (f x) (f y) :=
@@ -399,25 +399,25 @@ def liftUnion {A} {B} {R S : Relation A} {R' S' : Relation B} {x y : A} (f : A �
   | union.r r => union.r (ctr1 r)
   | union.s s => union.s (ctr2 s)
 
-def leftClosureUnion {A x y} {R S : Relation A}
+theorem leftClosureUnion {A x y} {R S : Relation A}
   (r : closure R x y) : closure (union R S) x y :=
   match r with
   | closure.refl => closure.refl
   | closure.cons s ss => closure.cons (union.r s) (leftClosureUnion ss)
 
-def rightClosureUnion {A x y} {R S : Relation A}
+theorem rightClosureUnion {A x y} {R S : Relation A}
   (s : closure S x y) : closure (union R S) x y :=
   match s with
   | closure.refl => closure.refl
   | closure.cons s ss => closure.cons (union.s s) (rightClosureUnion ss)
 
-def oneUnionStep {A x y} {R S : Relation A}
+theorem oneUnionStep {A x y} {R S : Relation A}
   (s : union R S x y) : union (closure R) (closure S) x y :=
   match s with
   | union.r r => union.r (oneStep r)
   | union.s s => union.s (oneStep s)
 
-def unionClosureToClosureUnion {A x y} {R S : Relation A}
+theorem unionClosureToClosureUnion {A x y} {R S : Relation A}
   (s : union (closure R) (closure S) x y) : closure (union R S) x y :=
   match s with
   | union.r r => leftClosureUnion r
@@ -536,7 +536,7 @@ theorem etaLift {i} {M M' : Term}
     intros
     subst M
     simp [lift]
-    rw [lift_lift] <;> try cutsat
+    rw [lift_lift] <;> try lia
     apply StepEta.eta
     rfl
   | alpha =>
@@ -560,7 +560,7 @@ theorem etaSubst1 {i} {N N'} {M : Term}
   : closure StepEta (subst i N M) (subst i N' M) :=
   match M with
   | var i => by
-    repeat' (first | simp [subst] | split | cutsat | apply closure.refl)
+    repeat' (first | simp [subst] | split | lia | apply closure.refl)
     apply oneStep
     assumption
   | const c => closure.refl
@@ -582,8 +582,9 @@ theorem etaSubst2 (i N) {M M' : Term}
     simp [subst]
     have iamwritingaproof : subst (i + 1) (lift 0 N) (lift 0 M') = lift 0 (subst i N M') := by
       rewrite [lift_subst]
-      split <;> try cutsat
-      rewrite [subst_lift_off_by_1] <;> try cutsat
+      split <;> try lia
+      rewrite [subst_lift_off_by_1] <;> try lia
+      grind
     rewrite [iamwritingaproof]
     apply StepEta.eta
     rfl
@@ -597,7 +598,7 @@ theorem substStep2 (i N) {M M' : Term}
   | Step.lam p => Step.lam (substStep2 _ _ p)
   | Step.beta => by
     simp [subst]
-    rw [subst_subst] <;> try cutsat
+    rw [subst_subst] <;> try lia
     apply Step.beta
 
 theorem substStep1 {i} {N N'} {M : Term}
@@ -605,7 +606,7 @@ theorem substStep1 {i} {N N'} {M : Term}
   : closure Step (subst i N M) (subst i N' M) :=
   match M with
   | var i => by
-    repeat' (first | simp [subst] | split | cutsat | apply closure.refl)
+    repeat' (first | simp [subst] | split | lia | apply closure.refl)
     apply oneStep
     assumption
   | const c => closure.refl
@@ -654,7 +655,7 @@ theorem stepEtaRespectsLift {i : Nat} {M N : Term}
     cases t with | app l r => _ | _  <;> simp [lift] at H
     rcases H with ⟨q, H⟩
     clear H
-    apply_fun (subst 0 (lift i dummy)) at q
+    have q := congrArg (subst 0 (lift i dummy)) q
     rewrite [subst_lift] at q
     have coolfact : subst 0 (lift i dummy) (lift (i + 1) l) = lift i (subst 0 dummy l) := by
       rw [lift_subst]
@@ -699,7 +700,7 @@ theorem stepRespectsLift {i : Nat} {M N : Term}
     rcases H with ⟨rfl, rfl⟩
     exists (subst 0 r t)
     rw [lift_subst]
-    split; try cutsat
+    split; try lia
     rfl
 
 theorem etaProperty : square StepEta StepEta
@@ -914,7 +915,7 @@ theorem liftLiftMulti (n i : Nat) (H : i ≤ n) (t : Term)
     cases i with
     | zero => rfl
     | succ i' =>
-      rw [lift_lift] <;> try cutsat
+      rw [lift_lift] <;> try lia
       simp at *
       rw [ih _ H]
       rfl
@@ -925,11 +926,11 @@ theorem substLiftMulti (n i : Nat) (t1 t2 : Term) (H : i < n)
   | zero =>
     cases H
   | succ n' =>
-    rw [<- liftLiftMulti n' i] <;> try cutsat
+    rw [<- liftLiftMulti n' i] <;> try lia
     rw [subst_lift]
     rfl
 
-lemma constStep' {c t} (step : (union Step StepEta) (const c) t) : t = const c := by
+theorem constStep' {c t} (step : (union Step StepEta) (const c) t) : t = const c := by
   cases step with
   | r step => cases step -- TODO: i don't know how cases solves this goal
   | s step => cases step
@@ -945,7 +946,7 @@ theorem constStep {c t} (step : AllStep (const c) t) : t = const c := by
     apply ih
     rfl
 
-lemma varStep' {i t} (step : (union Step StepEta) (var i) t) : t = var i := by
+theorem varStep' {i t} (step : (union Step StepEta) (var i) t) : t = var i := by
   cases step with
   | r step => cases step -- TODO: i don't know how cases solves this goal
   | s step => cases step

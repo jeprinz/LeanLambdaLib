@@ -142,6 +142,9 @@ inductive QNeutral : QTerm → Prop where
 | var : ∀{n}, QNeutral (var n)
 | app : ∀{t arg}, QNeutral t → QNeutral (app t arg)
 
+-- TODO: figure this out with modules!
+unseal app QuotTerm.liftMulti QuotTerm.lift QuotTerm.subst
+
 theorem liftNeutralWithArity {t}
   : Neutral t → QNeutral (Quotient.mk _ t) := by
   intro H
@@ -262,7 +265,7 @@ theorem app_fact_rw {a b a' b'} (qneut : QNeutral a) (qneut' : QNeutral a')
 theorem liftZeroToLiftMulti {t} : QuotTerm.lift 0 t = liftMulti 1 t := by
   apply Quotient.ind _ t
   intros
-  simp [QuotTerm.liftMulti, QuotTerm.lift, SynTerm.liftMulti]
+  cbv
 
 theorem liftMultiLiftMulti {n m} {t : QTerm}
   : liftMulti n (liftMulti m t) = liftMulti (n + m) t := by
@@ -336,11 +339,12 @@ theorem special_case i t1 t2 (ifree : iFree i t1) (H : app t1 (var i) = t2)
   : subst i <Dummy> t1 = lam "x" (subst i.succ (var 0) (lift 0 t2)) := by
   subst t2
   simp only [Nat.succ_eq_add_one, lift_app, lift_var, ge_iff_le, Nat.zero_le,
-    ↓reduceIte, subst_app, subst_var, lt_self_iff_false, BEq.rfl]
+    ↓reduceIte, subst_app, subst_var, BEq.rfl]
   have fact : ∀ t, QuotTerm.lift 0 (QuotTerm.lift i t)
     = QuotTerm.lift i.succ (QuotTerm.lift 0 t) := by
     intros
     rw (occs := [2]) [QuotTerm.lift_lift] <;> simp
+  simp only [Nat.lt_irrefl, ↓reduceIte]
   rw [eta_contract]
   · rcases iFreeLift ifree with ⟨t1', rfl⟩
     rw [fact]
@@ -364,7 +368,7 @@ theorem special_case_rw i t1 t2 (ifree : iFree i t1)
     rw [QuotTerm.subst_lift] at p
     subst t1'
     simp only [lift_lam, beta]
-    simp only [QuotTerm.lift_subst, lt_self_iff_false, ↓reduceIte, lift_var]
+    simp only [QuotTerm.lift_subst, lift_var]
     simp [QuotTerm.lift_lift]
     simp [QuotTerm.subst_subst_2]
     simp [QuotTerm.subst_lift]
